@@ -2,23 +2,20 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiServiceWeb {
-  // --- ATENÇÃO: COLOQUE AQUI SUA URL EXATA DO RENDER ---
-  static const String baseUrl = 'https://condologic-backend.onrender.com/api'; 
-  
-  // ... (O resto do código continua igual ao arquivo das 20:00)
-  
+  // APONTAMENTO OFICIAL PARA O RENDER - SUBSTITUINDO O LOCALHOST
+  static const String baseUrl = 'https://condologic-backend.onrender.com/api';
+
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String cpf, String password) async {
     try {
       final url = Uri.parse('$baseUrl/auth/login');
       final cpfLimpo = cpf.replaceAll(RegExp(r'[^0-9]'), '');
-      
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'cpf': cpfLimpo, 'senha': password}),
       );
-
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -30,12 +27,8 @@ class ApiServiceWeb {
     }
   }
 
-  // ... (Mantenha todas as outras funções: getCondominios, criarUsuario, etc.)
-  // O importante é que todas usem a variável 'baseUrl' que alteramos acima.
-  
   // --- CONDOMÍNIOS ---
   Future<List<dynamic>> getCondominios({int? usuarioId, String? nivel}) async {
-    // Ajustei para aceitar filtros se necessário, igual fizemos antes
     String query = '$baseUrl/admin/condominios';
     if (usuarioId != null) query += '?usuario_id=$usuarioId&nivel=$nivel';
     
@@ -43,9 +36,14 @@ class ApiServiceWeb {
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao carregar condomínios');
   }
-  
+
   Future<void> criarCondominio(Map<String, dynamic> dados) async {
-    final response = await http.post(Uri.parse('$baseUrl/admin/condominio'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    final url = Uri.parse('$baseUrl/admin/condominio');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
     if (response.statusCode != 201) throw Exception('Erro ao criar: ${response.body}');
   }
 
@@ -82,9 +80,18 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao desvincular');
   }
 
-  // --- BLOCOS E UNIDADES ---
+  // --- BLOCOS ---
   Future<void> criarBloco(int tenantId, String nome) async {
-    await http.post(Uri.parse('$baseUrl/admin/bloco'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'tenant_id': tenantId, 'nome': nome}));
+    final url = Uri.parse('$baseUrl/admin/bloco');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'tenant_id': tenantId,
+        'nome': nome
+      }),
+    );
+    if (response.statusCode != 201) throw Exception('Erro ao criar bloco');
   }
 
   Future<void> gerarEstruturaCompleta(Map<String, dynamic> dados) async {
@@ -101,59 +108,108 @@ class ApiServiceWeb {
   }
 
   Future<List<dynamic>> getBlocos(int tenantId) async {
-    final response = await http.get(Uri.parse('$baseUrl/admin/blocos/$tenantId'));
-    return jsonDecode(response.body);
+    final url = Uri.parse('$baseUrl/admin/blocos/$tenantId');
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Erro ao listar blocos');
+    }
   }
 
+  // --- UNIDADES ---
   Future<List<dynamic>> getUnidadesPorBloco(int blocoId) async {
-    final response = await http.get(Uri.parse('$baseUrl/admin/unidades/$blocoId'));
-    return jsonDecode(response.body);
+    final url = Uri.parse('$baseUrl/admin/unidades/$blocoId');
+    final response = await http.get(url);
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Erro ao listar unidades');
   }
 
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
-    await http.post(Uri.parse('$baseUrl/admin/unidade'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    final url = Uri.parse('$baseUrl/admin/unidade');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode != 201) throw Exception('Erro ao criar unidade');
   }
 
   Future<void> gerarUnidadesLote(Map<String, dynamic> dados) async {
     await http.post(Uri.parse('$baseUrl/admin/unidades/lote'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
   }
 
-  // --- USUÁRIOS ---
+  // --- USUÁRIOS (CRUD COMPLETO) ---
   Future<List<dynamic>> getUsuarios() async {
-    final response = await http.get(Uri.parse('$baseUrl/admin/usuarios'));
-    return jsonDecode(response.body);
+    final url = Uri.parse('$baseUrl/admin/usuarios');
+    final response = await http.get(url);
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Erro ao listar usuários');
   }
 
   Future<void> criarUsuario(Map<String, dynamic> dados) async {
-    final response = await http.post(Uri.parse('$baseUrl/admin/usuario'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
-    if (response.statusCode != 201) throw Exception('Erro ao criar usuário');
+    final url = Uri.parse('$baseUrl/admin/usuario');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode != 201) {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro ao criar usuário');
+    }
   }
 
   Future<void> editarUsuario(int id, Map<String, dynamic> dados) async {
-    await http.put(Uri.parse('$baseUrl/admin/usuario/$id'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    final url = Uri.parse('$baseUrl/admin/usuario/$id');
+    final response = await http.put(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode != 200) throw Exception('Erro ao editar usuário');
   }
 
   Future<void> excluirUsuario(int id) async {
-    await http.delete(Uri.parse('$baseUrl/admin/usuario/$id'));
+    final url = Uri.parse('$baseUrl/admin/usuario/$id');
+    final response = await http.delete(url);
+    if (response.statusCode != 200) throw Exception('Erro ao excluir usuário');
   }
 
-  // --- LEITURAS ---
+  // --- LEITURAS (CRUD) ---
   Future<List<dynamic>> getLeituras(int tenantId, {int? mes, int? ano, String? dtInicio, String? dtFim, int? blocoId}) async {
     String queryUrl = '$baseUrl/leitura/listar?tenant_id=$tenantId';
     if (dtInicio != null && dtFim != null) queryUrl += '&data_inicio=$dtInicio&data_fim=$dtFim';
     else if (mes != null && ano != null) queryUrl += '&mes=$mes&ano=$ano';
     if (blocoId != null) queryUrl += '&bloco_id=$blocoId';
-    
+
     final response = await http.get(Uri.parse(queryUrl));
     return jsonDecode(response.body);
   }
 
   Future<void> corrigirLeitura(int id, double novoValor, {String? novaFotoBase64}) async {
+    final url = Uri.parse('$baseUrl/leitura/$id');
     final body = {'novo_valor': novoValor, if (novaFotoBase64 != null) 'nova_foto': novaFotoBase64};
-    await http.put(Uri.parse('$baseUrl/leitura/$id'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    final response = await http.put(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 200) throw Exception('Erro ao corrigir leitura');
   }
 
   Future<void> excluirLeitura(int id) async {
-    await http.delete(Uri.parse('$baseUrl/leitura/$id'));
+    final url = Uri.parse('$baseUrl/leitura/$id');
+    final response = await http.delete(url);
+    if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
 }
+// --- BUSCAR MEDIDORES ESPECÍFICOS DE UMA UNIDADE ---
+  Future<List<dynamic>> getMedidoresUnidade(int tenantId, int unidadeId) async {
+    final response = await http.get(Uri.parse('$baseUrl/dashboard/unidades?tenant_id=$tenantId'));
+    if (response.statusCode == 200) {
+      List<dynamic> todos = jsonDecode(response.body);
+      return todos.where((item) => item['unidade_id'] == unidadeId).toList();
+    }
+    return [];
+  }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service_web.dart';
+import 'detalhe_unidade_web.dart'; // <--- IMPORT DA NOVA TELA ADICIONADO AQUI
 
 class DetalheBlocoWeb extends StatefulWidget {
   final Map<String, dynamic> bloco;
@@ -322,27 +323,44 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                           itemCount: _unidades.length,
                           itemBuilder: (context, index) {
                             final u = _unidades[index];
-                            return Card(
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    u['identificacao'], 
-                                    style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(u['andar'] ?? '-', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
-                                    child: Text('${u['total_medidores']} Med.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                            
+                            // ==========================================================
+                            // INKWELL ADICIONADO AQUI! AGORA O CARD É CLICÁVEL
+                            // ==========================================================
+                            return InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context, 
+                                  MaterialPageRoute(
+                                    builder: (_) => DetalheUnidadeWeb(unidade: u, condominio: widget.condominio)
                                   )
-                                ],
+                                );
+                              },
+                              child: Card(
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      u['identificacao'], 
+                                      style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(u['andar'] ?? '-', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
+                                      child: Text('${u['total_medidores']} Med.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    const Text('Ver relógios', style: TextStyle(color: Colors.blue, fontSize: 10, decoration: TextDecoration.underline)),
+                                  ],
+                                ),
                               ),
                             );
+                            // ==========================================================
                           },
                         ),
             ),

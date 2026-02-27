@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/api_service_web.dart'; // Certifique-se que o caminho está certo
+import '../services/api_service_web.dart';
 
 class UsuariosScreenWeb extends StatefulWidget {
   const UsuariosScreenWeb({super.key});
@@ -14,7 +13,7 @@ class UsuariosScreenWeb extends StatefulWidget {
 class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   List<dynamic> _usuarios = [];
-  List<dynamic> _condominios = []; // Lista para o Dropdown
+  List<dynamic> _condominios = [];
   bool _isLoading = true;
 
   @override
@@ -27,7 +26,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     setState(() => _isLoading = true);
     try {
       final usuarios = await _apiService.getUsuarios();
-      final condominios = await _apiService.getCondominios(); // Precisamos buscar os condominios
+      final condominios = await _apiService.getCondominios();
       setState(() {
         _usuarios = usuarios;
         _condominios = condominios;
@@ -35,7 +34,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      // Ignora erro se não conseguir carregar, mas idealmente exibiria alerta
     }
   }
 
@@ -68,9 +66,22 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     final cpfController = TextEditingController(text: usuario?['cpf'] ?? '');
     final senhaController = TextEditingController();
     
-    // Valores iniciais do Dropdown
-    String tipoSelecionado = usuario?['tipo'] ?? 'leiturista';
+    // =========================================================================
+    // CORREÇÃO CRÍTICA DO ERRO "ASSERTION FAILED" NO DROPDOWN
+    // =========================================================================
+    String tipoDb = usuario?['tipo'] ?? 'leiturista';
+    // Se no banco vier lixo ou termos antigos, convertemos para o padrão atual
+    if (tipoDb == 'zelador' || tipoDb == 'sindico') tipoDb = 'leiturista'; 
+    if (!['leiturista', 'admin', 'master'].contains(tipoDb)) tipoDb = 'leiturista';
+    
+    String tipoSelecionado = tipoDb;
     int? tenantIdSelecionado = usuario?['tenant_id'];
+    
+    // Se o condomínio foi excluído, limpamos a seleção para não quebrar a tela
+    if (tenantIdSelecionado != null && !_condominios.any((c) => c['id'] == tenantIdSelecionado)) {
+      tenantIdSelecionado = null;
+    }
+    // =========================================================================
 
     showDialog(
       context: context,
@@ -85,25 +96,14 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextField(
-                        controller: nomeController,
-                        decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder()),
-                      ),
+                      TextField(controller: nomeController, decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())),
                       const SizedBox(height: 10),
-                      TextField(
-                        controller: cpfController,
-                        decoration: const InputDecoration(labelText: 'CPF (apenas números ou formatado)', border: OutlineInputBorder()),
-                      ),
+                      TextField(controller: cpfController, decoration: const InputDecoration(labelText: 'CPF', border: OutlineInputBorder())),
                       const SizedBox(height: 10),
-                      if (usuario == null) // Só mostra senha se for novo
-                        TextField(
-                          controller: senhaController,
-                          obscureText: true,
-                          decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
-                        ),
+                      if (usuario == null) 
+                        TextField(controller: senhaController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder())),
                       const SizedBox(height: 10),
                       
-                      // --- DROPDOWN TIPO ---
                       DropdownButtonFormField<String>(
                         value: tipoSelecionado,
                         decoration: const InputDecoration(labelText: 'Função', border: OutlineInputBorder()),
@@ -119,20 +119,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       const Text("Vincular a qual Condomínio?", style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
 
-                      // --- DROPDOWN CONDOMINIO (AQUI ESTÁ A MÁGICA) ---
                       DropdownButtonFormField<int>(
                         value: tenantIdSelecionado,
                         isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Selecione o Condomínio', 
-                          border: OutlineInputBorder(),
-                          helperText: 'O usuário só verá dados deste condomínio.'
-                        ),
+                        decoration: const InputDecoration(labelText: 'Selecione o Condomínio', border: OutlineInputBorder()),
                         items: _condominios.map<DropdownMenuItem<int>>((condo) {
-                          return DropdownMenuItem<int>(
-                            value: condo['id'],
-                            child: Text(condo['nome'], overflow: TextOverflow.ellipsis),
-                          );
+                          return DropdownMenuItem<int>(value: condo['id'], child: Text(condo['nome'], overflow: TextOverflow.ellipsis));
                         }).toList(),
                         onChanged: (v) => setStateModal(() => tenantIdSelecionado = v),
                       ),
@@ -148,14 +140,9 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um condomínio!')));
                        return;
                     }
-
                     final dados = {
-                      'nome': nomeController.text,
-                      'cpf': cpfController.text,
-                      'tipo': tipoSelecionado,
-                      'tenant_id': tenantIdSelecionado, // Enviando o ID do condomínio
+                      'nome': nomeController.text, 'cpf': cpfController.text, 'tipo': tipoSelecionado, 'tenant_id': tenantIdSelecionado, 
                     };
-
                     try {
                       if (usuario == null) {
                         dados['senha'] = senhaController.text;
@@ -166,7 +153,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       if (mounted) {
                         Navigator.pop(ctx);
                         _carregarDados();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Salvo com sucesso!'), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
@@ -185,11 +171,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Gestão de Equipe', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: Text('Gestão de Equipe', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)), backgroundColor: Colors.blue[800], foregroundColor: Colors.white),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Padding(
@@ -203,11 +185,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                         onPressed: () => _abrirModalUsuario(),
                         icon: const Icon(Icons.person_add),
                         label: const Text("NOVO USUÁRIO"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
                       ),
                     ],
                   ),
@@ -217,20 +195,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       itemCount: _usuarios.length,
                       itemBuilder: (context, index) {
                         final u = _usuarios[index];
-                        // Descobrir nome do condomínio baseado no ID
-                        final condo = _condominios.firstWhere(
-                          (c) => c['id'] == u['tenant_id'], 
-                          orElse: () => {'nome': 'Não vinculado'}
-                        );
-
+                        final condo = _condominios.firstWhere((c) => c['id'] == u['tenant_id'], orElse: () => {'nome': 'Não vinculado'});
                         return Card(
                           elevation: 2,
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.blue[100],
-                              child: Text(u['nome'].substring(0, 1).toUpperCase()),
-                            ),
+                            leading: CircleAvatar(backgroundColor: Colors.blue[100], child: Text(u['nome'].substring(0, 1).toUpperCase())),
                             title: Text(u['nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,14 +212,8 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () => _abrirModalUsuario(usuario: u),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _excluirUsuario(u['id']),
-                                ),
+                                IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _abrirModalUsuario(usuario: u)),
+                                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _excluirUsuario(u['id'])),
                               ],
                             ),
                           ),
