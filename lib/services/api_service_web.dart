@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiServiceWeb {
-  // APONTAMENTO OFICIAL PARA O RENDER - SUBSTITUINDO O LOCALHOST
+  // APONTAMENTO OFICIAL PARA O RENDER
   static const String baseUrl = 'https://condologic-backend.onrender.com/api';
 
   // --- LOGIN ---
@@ -203,8 +203,8 @@ class ApiServiceWeb {
     final response = await http.delete(url);
     if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
-}
-// --- BUSCAR MEDIDORES ESPECÍFICOS DE UMA UNIDADE ---
+
+  // --- BUSCAR MEDIDORES ESPECÍFICOS DE UMA UNIDADE (NOVO) ---
   Future<List<dynamic>> getMedidoresUnidade(int tenantId, int unidadeId) async {
     final response = await http.get(Uri.parse('$baseUrl/dashboard/unidades?tenant_id=$tenantId'));
     if (response.statusCode == 200) {
@@ -213,3 +213,4 @@ class ApiServiceWeb {
     }
     return [];
   }
+}

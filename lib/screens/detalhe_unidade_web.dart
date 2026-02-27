@@ -53,10 +53,28 @@ class _DetalheUnidadeWebState extends State<DetalheUnidadeWeb> {
                   itemBuilder: (context, index) {
                     final med = _medidores[index];
                     
-                    Color cor = Colors.grey.shade300;
-                    if (med['status_cor'] == 'verde') cor = Colors.green;
-                    if (med['status_cor'] == 'vermelho') cor = Colors.red;
-                    if (med['status_cor'] == 'amarelo') cor = Colors.amber;
+                    // --- COR DA BOLINHA DE STATUS ---
+                    Color corStatus = Colors.grey.shade300;
+                    if (med['status_cor'] == 'verde') corStatus = Colors.green;
+                    if (med['status_cor'] == 'vermelho') corStatus = Colors.red;
+                    if (med['status_cor'] == 'amarelo') corStatus = Colors.amber;
+
+                    // --- LÓGICA DOS ÍCONES E CORES DOS MEDIDORES ---
+                    String tipo = med['tipo_medidor'].toString().toLowerCase();
+                    IconData iconeMedidor = Icons.speed; // Padrão
+                    Color corIcone = Colors.blue[800]!;  // Padrão
+
+                    if (tipo == 'agua_quente') {
+                      iconeMedidor = Icons.speed;
+                      corIcone = Colors.red;
+                    } else if (tipo == 'gas' || tipo == 'gás') {
+                      iconeMedidor = Icons.local_fire_department; // Ícone de Chama/Fogo
+                      corIcone = Colors.red;
+                    } else {
+                      // agua_fria ou padrão
+                      iconeMedidor = Icons.speed;
+                      corIcone = Colors.blue[800]!;
+                    }
 
                     return Card(
                       elevation: 3,
@@ -65,9 +83,16 @@ class _DetalheUnidadeWebState extends State<DetalheUnidadeWeb> {
                         contentPadding: const EdgeInsets.all(20),
                         leading: Container(
                           width: 20, height: 20,
-                          decoration: BoxDecoration(color: cor, shape: BoxShape.circle, border: Border.all(color: Colors.grey)),
+                          decoration: BoxDecoration(
+                            color: corStatus, 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: Colors.grey)
+                          ),
                         ),
-                        title: Text('Medidor: ${med['tipo_medidor'].toString().toUpperCase()}', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, fontSize: 18)),
+                        title: Text(
+                          'Medidor: ${med['tipo_medidor'].toString().toUpperCase()}', 
+                          style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, fontSize: 18)
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -76,7 +101,8 @@ class _DetalheUnidadeWebState extends State<DetalheUnidadeWeb> {
                             Text('Média de consumo: ${med['media_consumo'] ?? '0'}', style: const TextStyle(color: Colors.grey)),
                           ],
                         ),
-                        trailing: Icon(Icons.speed, color: Colors.blue[800], size: 40),
+                        // AQUI O ÍCONE DINÂMICO É APLICADO
+                        trailing: Icon(iconeMedidor, color: corIcone, size: 40),
                       ),
                     );
                   },
