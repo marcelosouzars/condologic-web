@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-// Importações ajustadas para os nomes REAIS dos seus arquivos (com _web.dart)
-import 'package:web_admin/screens/dashboard_screen_web.dart';
-import 'package:web_admin/screens/unidades_screen_web.dart';
-import 'package:web_admin/screens/usuarios_screen_web.dart';
-import 'package:web_admin/screens/leituras_screen_web.dart'; 
-import 'package:web_admin/main.dart';
+import 'dashboard_screen_web.dart';
+import 'condominios_screen_web.dart'; // Ajustado para seu arquivo real
+import 'usuarios_screen_web.dart';
+import 'leituras_screen_web.dart'; 
+import '../main.dart'; // Para acessar o usuarioLogado
 
 class MainWebScreen extends StatefulWidget {
   const MainWebScreen({super.key});
@@ -18,12 +17,13 @@ class _MainWebScreenState extends State<MainWebScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lista de telas corrigida com os nomes das classes que estão nos seus arquivos
+    // A LISTA NÃO PODE SER CONST pois LeiturasScreenWeb recebe parâmetro
     final List<Widget> _telas = [
-      DashboardScreenWeb(),
-      UnidadesScreenWeb(),
-      UsuariosScreenWeb(),
-      LeiturasScreenWeb(tenantId: 1), 
+      const DashboardScreenWeb(),
+      const CondominiosScreenWeb(),
+      const UsuariosScreenWeb(),
+      // Aqui passamos o ID do condomínio logado
+      LeiturasScreenWeb(tenantId: usuarioLogado?.tenantId ?? 1),
     ];
 
     return Scaffold(
@@ -37,12 +37,14 @@ class _MainWebScreenState extends State<MainWebScreen> {
               });
             },
             labelType: NavigationRailLabelType.all,
-            backgroundColor: const Color(0xFF263238),
+            backgroundColor: Colors.blueGrey[900],
             unselectedIconTheme: const IconThemeData(color: Colors.white70),
             selectedIconTheme: const IconThemeData(color: Colors.white),
+            unselectedLabelTextStyle: const TextStyle(color: Colors.white70),
+            selectedLabelTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             destinations: const [
               NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Dashboard')),
-              NavigationRailDestination(icon: Icon(Icons.apartment), label: Text('Unidades')),
+              NavigationRailDestination(icon: Icon(Icons.apartment), label: Text('Condomínios')),
               NavigationRailDestination(icon: Icon(Icons.people), label: Text('Usuários')),
               NavigationRailDestination(icon: Icon(Icons.fact_check), label: Text('Auditoria IA')),
             ],
