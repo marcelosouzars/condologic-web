@@ -2,41 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-class LeiturasScreen extends StatefulWidget {
+class LeiturasScreenWeb extends StatefulWidget {
   final int tenantId;
-  const LeiturasScreen({Key? key, required this.tenantId}) : super(key: key);
+  const LeiturasScreenWeb({Key? key, required this.tenantId}) : super(key: key);
 
   @override
-  _LeiturasScreenState createState() => _LeiturasScreenState();
+  _LeiturasScreenWebState createState() => _LeiturasScreenWebState();
 }
 
-class _LeiturasScreenState extends State<LeiturasScreen> {
-  List<dynamic> _listaLeituras = [];
-  bool _carregando = true;
+class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
+  List<dynamic> _leituras = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _atualizarLista();
+    _buscarLeituras();
   }
 
-  Future<void> _atualizarLista() async {
-    setState(() => _carregando = true);
+  Future<void> _buscarLeituras() async {
+    setState(() => _isLoading = true);
     try {
-      final res = await http.get(
+      final response = await http.get(
         Uri.parse('https://condologic-backend.onrender.com/api/leitura/listar?tenant_id=${widget.tenantId}'),
       );
-      if (res.statusCode == 200) {
-        setState(() => _listaLeituras = jsonDecode(res.body));
+      if (response.statusCode == 200) {
+        setState(() => _leituras = jsonDecode(response.body));
       }
     } catch (e) {
-      debugPrint("Erro na web: $e");
+      debugPrint("Erro ao buscar: $e");
     } finally {
-      setState(() => _carregando = false);
+      setState(() => _isLoading = false);
     }
   }
 
-  // Define a cor de fundo da linha conforme o risco detectado pela IA
   Color _obterCorStatus(String? status) {
     if (status == 'ALERTA') return Colors.red.shade50;
     if (status == 'SUSPEITO') return Colors.orange.shade50;
@@ -47,16 +46,17 @@ class _LeiturasScreenState extends State<LeiturasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Gestão e Auditoria de Fotometria"),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _atualizarLista)],
+        title: const Text("Auditoria de Fotometria (IA)"),
+        backgroundColor: Colors.blueGrey[800],
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _buscarLeituras)],
       ),
-      body: _carregando 
+      body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
           : Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(20.0),
               child: SingleChildScrollView(
                 child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(Colors.blueGrey[50]),
+                  headingRowColor: MaterialStateProperty.all(Colors.blueGrey[100]),
                   columns: const [
                     DataColumn(label: Text('Unidade/Bloco')),
                     DataColumn(label: Text('Anterior')),
@@ -65,22 +65,19 @@ class _LeiturasScreenState extends State<LeiturasScreen> {
                     DataColumn(label: Text('Status')),
                     DataColumn(label: Text('Foto')),
                   ],
-                  rows: _listaLeituras.map((leitura) {
-                    final status = leitura['status_leitura'] ?? '';
+                  rows: _leituras.map((l) {
+                    final status = l['status_leitura'] ?? '';
                     return DataRow(
                       color: MaterialStateProperty.all(_obterCorStatus(status)),
                       cells: [
-                        DataCell(Text("${leitura['unidade_nome']} (${leitura['bloco_nome']})")),
-                        DataCell(Text("${leitura['leitura_anterior'] ?? '0'}")),
-                        DataCell(Text("${leitura['valor_lido']}", style: const TextStyle(fontWeight: FontWeight.bold))),
-                        DataCell(Text("${leitura['consumo']} m³")),
-                        DataCell(Text(
-                          leitura['observacao'] ?? status,
-                          style: TextStyle(color: status == 'ALERTA' ? Colors.red : Colors.black),
-                        )),
+                        DataCell(Text("${l['unidade_nome']} (${l['bloco_nome']})")),
+                        DataCell(Text("${l['leitura_anterior'] ?? '0'}")),
+                        DataCell(Text("${l['valor_lido']}", style: const TextStyle(fontWeight: FontWeight.bold))),
+                        DataCell(Text("${l['consumo']} m³")),
+                        DataCell(Text(l['observacao'] ?? status, style: TextStyle(color: status == 'ALERTA' ? Colors.red : Colors.black))),
                         DataCell(IconButton(
-                          icon: const Icon(Icons.photo, color: Colors.blue),
-                          onPressed: () => _exibirFoto(leitura['foto_url']),
+                          icon: const Icon(Icons.image, color: Colors.blue),
+                          onPressed: () => _exibirFoto(l['foto_url']),
                         )),
                       ],
                     );
@@ -96,9 +93,7 @@ class _LeiturasScreenState extends State<LeiturasScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Recorte enviado pela IA"),
         content: Image.memory(base64Decode(base64.replaceFirst(RegExp(r'data:image/[^;]+;base64,'), ''))),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fechar"))],
       ),
     );
   }
