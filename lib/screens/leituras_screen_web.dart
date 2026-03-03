@@ -48,6 +48,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       appBar: AppBar(
         title: const Text("Auditoria de Fotometria (IA)"),
         backgroundColor: Colors.blueGrey[800],
+        foregroundColor: Colors.white,
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _buscarLeituras)],
       ),
       body: _isLoading 
@@ -55,33 +56,36 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           : Padding(
               padding: const EdgeInsets.all(20.0),
               child: SingleChildScrollView(
-                child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(Colors.blueGrey[100]),
-                  columns: const [
-                    DataColumn(label: Text('Unidade/Bloco')),
-                    DataColumn(label: Text('Anterior')),
-                    DataColumn(label: Text('Lido (IA)')),
-                    DataColumn(label: Text('Consumo')),
-                    DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Foto')),
-                  ],
-                  rows: _leituras.map((l) {
-                    final status = l['status_leitura'] ?? '';
-                    return DataRow(
-                      color: MaterialStateProperty.all(_obterCorStatus(status)),
-                      cells: [
-                        DataCell(Text("${l['unidade_nome']} (${l['bloco_nome']})")),
-                        DataCell(Text("${l['leitura_anterior'] ?? '0'}")),
-                        DataCell(Text("${l['valor_lido']}", style: const TextStyle(fontWeight: FontWeight.bold))),
-                        DataCell(Text("${l['consumo']} m³")),
-                        DataCell(Text(l['observacao'] ?? status, style: TextStyle(color: status == 'ALERTA' ? Colors.red : Colors.black))),
-                        DataCell(IconButton(
-                          icon: const Icon(Icons.image, color: Colors.blue),
-                          onPressed: () => _exibirFoto(l['foto_url']),
-                        )),
-                      ],
-                    );
-                  }).toList(),
+                child: Card(
+                  elevation: 5,
+                  child: DataTable(
+                    headingRowColor: MaterialStateProperty.all(Colors.blueGrey[100]),
+                    columns: const [
+                      DataColumn(label: Text('Unidade')),
+                      DataColumn(label: Text('Anterior')),
+                      DataColumn(label: Text('IA')),
+                      DataColumn(label: Text('Consumo')),
+                      DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Foto')),
+                    ],
+                    rows: _leituras.map((l) {
+                      final status = l['status_leitura'] ?? '';
+                      return DataRow(
+                        color: MaterialStateProperty.all(_obterCorStatus(status)),
+                        cells: [
+                          DataCell(Text("${l['unidade_nome']} (${l['bloco_nome']})")),
+                          DataCell(Text("${l['leitura_anterior'] ?? '0'}")),
+                          DataCell(Text("${l['valor_lido']}", style: const TextStyle(fontWeight: FontWeight.bold))),
+                          DataCell(Text("${l['consumo']} m³")),
+                          DataCell(Text(l['observacao'] ?? status, style: TextStyle(color: status == 'ALERTA' ? Colors.red : Colors.black))),
+                          DataCell(IconButton(
+                            icon: const Icon(Icons.photo, color: Colors.blue),
+                            onPressed: () => _exibirFoto(l['foto_url']),
+                          )),
+                        ],
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
             ),
@@ -93,7 +97,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        title: const Text("Evidência IA"),
         content: Image.memory(base64Decode(base64.replaceFirst(RegExp(r'data:image/[^;]+;base64,'), ''))),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
       ),
     );
   }
