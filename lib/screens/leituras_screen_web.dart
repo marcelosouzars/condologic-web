@@ -1,142 +1,145 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../services/api_service_web.dart';
 
-class LeiturasScreenWeb extends StatefulWidget {
-  const LeiturasScreenWeb({super.key});
+class GestaoLeiturasPage extends StatefulWidget {
+  final int tenantId;
+  const GestaoLeiturasPage({Key? key, required this.tenantId}) : super(key: key);
+
   @override
-  State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
+  _GestaoLeiturasPageState createState() => _GestaoLeiturasPageState();
 }
 
-class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
-  final ApiServiceWeb _apiService = ApiServiceWeb();
+class _GestaoLeiturasPageState extends State<GestaoLeiturasPage> {
   List<dynamic> _leituras = [];
-  List<dynamic> _condominios = [];
   bool _isLoading = true;
-  int? _selectedTenantId;
-  DateTime? _dataInicio;
-  DateTime? _dataFim;
 
   @override
   void initState() {
     super.initState();
-    _carregarFiltrosIniciais();
+    _buscarLeituras();
   }
 
-  Future<void> _carregarFiltrosIniciais() async {
-    try {
-      final condos = await _apiService.getCondominios();
-      if (condos.isNotEmpty) {
-        setState(() { _condominios = condos; _selectedTenantId = condos[0]['id']; });
-        _carregarLeituras();
-      } else { setState(() => _isLoading = false); }
-    } catch (e) { setState(() => _isLoading = false); }
-  }
-
-  Future<void> _carregarLeituras() async {
-    if (_selectedTenantId == null) return;
+  Future<void> _buscarLeituras() async {
     setState(() => _isLoading = true);
     try {
-      String? dtIni = _dataInicio != null ? DateFormat('yyyy-MM-dd').format(_dataInicio!) : null;
-      String? dtFim = _dataFim != null ? DateFormat('yyyy-MM-dd').format(_dataFim!) : null;
-      final res = await _apiService.getLeituras(_selectedTenantId!, dtInicio: dtIni, dtFim: dtFim);
-      setState(() { _leituras = res; _isLoading = false; });
-    } catch (e) { setState(() => _isLoading = false); }
+      final response = await http.get(
+        Uri.parse('https://seu-backend-no-render.com/api/leitura/listar?tenant_id=${widget.tenantId}'),
+      );
+      if (response.statusCode == 200) {
+        setState(() => _leituras = jsonDecode(response.body));
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
-  Future<void> _excluirLeitura(int id) async {
-    try { await _apiService.excluirLeitura(id); _carregarLeituras(); } catch(e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'))); }
-  }
-
-  Future<void> _selecionarData(bool isInicio) async {
-    final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
-    if (picked != null) setState(() { if (isInicio) _dataInicio = picked; else _dataFim = picked; });
-  }
-
-  void _verFoto(String? base64String) {
-      if (base64String == null || base64String.length < 50) return;
-      showDialog(context: context, builder: (ctx) => Dialog(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Image.memory(base64Decode(base64String), fit: BoxFit.contain, errorBuilder: (c,o,s)=>const Icon(Icons.broken_image, size: 100)),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FECHAR"))
-      ])));
+  // Função que define a cor da linha baseada no perigo
+  Color _definirCorLinha(String status) {
+    switch (status) {
+      case 'ALERTA':
+        return Colors.red.shade50; // Vermelho claro para erro crítico
+      case 'SUSPEITO':
+        return Colors.orange.shade50; // Laranja claro para consumo alto
+      default:
+        return Colors.white;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Histórico de Leituras', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 15),
-        
-        // FILTROS
-        Card(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
-            Expanded(flex: 2, child: DropdownButtonFormField<int>(value: _selectedTenantId, items: _condominios.map<DropdownMenuItem<int>>((c) => DropdownMenuItem(value: c['id'], child: Text(c['nome']))).toList(), onChanged: (v){ setState(()=>_selectedTenantId=v); _carregarLeituras(); }, decoration: const InputDecoration(labelText: 'Condomínio', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
-            const SizedBox(width: 10),
-            Expanded(child: InkWell(onTap: ()=>_selecionarData(true), child: InputDecorator(decoration: const InputDecoration(labelText: 'De', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)), child: Text(_dataInicio != null ? DateFormat('dd/MM/yyyy').format(_dataInicio!) : 'Início')))),
-            const SizedBox(width: 5),
-            Expanded(child: InkWell(onTap: ()=>_selecionarData(false), child: InputDecorator(decoration: const InputDecoration(labelText: 'Até', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)), child: Text(_dataFim != null ? DateFormat('dd/MM/yyyy').format(_dataFim!) : 'Fim')))),
-            const SizedBox(width: 10),
-            ElevatedButton(onPressed: _carregarLeituras, style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(15)), child: const Icon(Icons.search)),
-        ]))),
-        
-        const SizedBox(height: 10),
-        
-        // LISTA BLINDADA CONTRA TELA CINZA
-        Expanded(child: _isLoading ? const Center(child: CircularProgressIndicator()) : _leituras.isEmpty 
-            ? const Center(child: Text("Nenhuma leitura encontrada.")) 
-            : ListView.builder(itemCount: _leituras.length, itemBuilder: (ctx, i) {
-            
-            final l = _leituras[i];
-            
-            // --- BLOCO DE SEGURANÇA (EVITA CRASH) ---
-            String titulo = "Unidade Desconhecida";
-            String subtitulo = "Sem dados";
-            Color corIcone = Colors.grey;
-            IconData icone = Icons.help;
-            bool temFoto = false;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Auditoria de Fotometria - CONDOLOGIC"),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _buscarLeituras),
+        ],
+      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: DataTable(
+              headingRowColor: MaterialStateProperty.all(Colors.grey.shade200),
+              columns: const [
+                DataColumn(label: Text('Unidade/Bloco')),
+                DataColumn(label: Text('Leitura Anterior')),
+                DataColumn(label: Text('Valor Lido (IA)')),
+                DataColumn(label: Text('Consumo')),
+                DataColumn(label: Text('Status/Alerta')),
+                DataColumn(label: Text('Foto')),
+                DataColumn(label: Text('Ações')),
+              ],
+              rows: _leituras.map((leitura) {
+                final String status = leitura['status_leitura'] ?? '';
+                final bool temErro = status == 'ALERTA' || status == 'SUSPEITO';
 
-            try {
-                final u = l['unidade_nome'] ?? l['unidade'] ?? '?';
-                final b = l['bloco_nome'] ?? l['bloco'] ?? '?';
-                final v = l['valor_lido']?.toString() ?? '0';
-                final t = l['tipo'] ?? 'agua';
-                
-                // DATA SEGURA
-                String dataStr = l['data_iso'] ?? l['data_formatada'] ?? '';
-                if (dataStr.contains('T') || dataStr.contains('-')) {
-                   // Formato ISO
-                   final dt = DateTime.tryParse(dataStr);
-                   if (dt != null) dataStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
-                }
+                return DataRow(
+                  color: MaterialStateProperty.all(_definirCorLinha(status)),
+                  cells: [
+                    DataCell(Text("${leitura['unidade_nome']} - ${leitura['bloco_nome']}")),
+                    DataCell(Text("${leitura['leitura_anterior'] ?? '0'}")),
+                    DataCell(
+                      Text(
+                        "${leitura['valor_lido']}",
+                        style: TextStyle(
+                          fontWeight: temErro ? FontWeight.bold : FontWeight.normal,
+                          color: temErro ? Colors.red.shade900 : Colors.black,
+                        ),
+                      ),
+                    ),
+                    DataCell(Text("${leitura['consumo'] ?? '0'} m³")),
+                    DataCell(
+                      Row(
+                        children: [
+                          if (temErro) Icon(Icons.warning_amber_rounded, color: status == 'ALERTA' ? Colors.red : Colors.orange, size: 20),
+                          const SizedBox(width: 5),
+                          Expanded(child: Text(leitura['observacao'] ?? status, style: TextStyle(fontSize: 12, color: temErro ? Colors.red : Colors.black54))),
+                        ],
+                      ),
+                    ),
+                    DataCell(
+                      leitura['foto_url'] != null 
+                        ? IconButton(
+                            icon: const Icon(Icons.image_search, color: Colors.blue),
+                            onPressed: () => _verFoto(leitura['foto_url']),
+                          )
+                        : const Text("-"),
+                    ),
+                    DataCell(
+                      ElevatedButton(
+                        onPressed: () => _corrigirLeitura(leitura),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+                        child: const Text("Corrigir", style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+    );
+  }
 
-                titulo = "$u - $b";
-                subtitulo = "Leitura: $v | $dataStr";
-                
-                if (t == 'agua') { corIcone = Colors.blue; icone = Icons.water_drop; }
-                else { corIcone = Colors.orange; icone = Icons.local_fire_department; }
-                
-                temFoto = (l['foto_url'] != null && l['foto_url'].toString().length > 50);
-            } catch (err) {
-                print("Erro ao renderizar item $i: $err");
-            }
-            // ----------------------------------------
+  void _verFoto(String base64) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppBar(title: const Text("Evidência Fotométrica"), leading: const CloseButton()),
+            Image.memory(base64Decode(base64.replaceFirst(RegExp(r'data:image/[^;]+;base64,'), ''))),
+          ],
+        ),
+      ),
+    );
+  }
 
-            return Card(child: ListTile(
-                leading: CircleAvatar(backgroundColor: corIcone.withOpacity(0.2), child: Icon(icone, color: corIcone)),
-                title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(subtitulo),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if(temFoto) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.blue), onPressed: ()=>_verFoto(l['foto_url'])),
-                    IconButton(icon: const Icon(Icons.delete, color: Colors.grey), onPressed: () {
-                        showDialog(context: context, builder: (ctx) => AlertDialog(
-                            title: const Text("Excluir?"), content: const Text("Confirmar exclusão?"),
-                            actions: [TextButton(onPressed: ()=>Navigator.pop(ctx), child: const Text("Não")), TextButton(onPressed: (){Navigator.pop(ctx); _excluirLeitura(l['id']);}, child: const Text("SIM", style: TextStyle(color: Colors.red)))]
-                        ));
-                    }),
-                ]),
-            ));
-        }))
-    ]);
+  void _corrigirLeitura(dynamic leitura) {
+    // Aqui você abriria o modal de edição que já tínhamos nos fontes originais
+    print("Abrir correção para ID: ${leitura['id']}");
   }
 }
