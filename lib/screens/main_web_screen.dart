@@ -1,152 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-
-import 'condominios_screen_web.dart';
-import 'usuarios_screen_web.dart';
-import 'leituras_screen_web.dart';   
-import 'relatorios_screen_web.dart'; 
-import 'login_screen_web.dart';
+import 'dashboard_screen.dart';
+import 'unidades_screen.dart';
+import 'usuarios_screen.dart';
+import 'leituras_screen.dart'; // Nome do arquivo que confirmamos na imagem
+import '../main.dart';
 
 class MainWebScreen extends StatefulWidget {
   const MainWebScreen({super.key});
+
   @override
   State<MainWebScreen> createState() => _MainWebScreenState();
 }
 
 class _MainWebScreenState extends State<MainWebScreen> {
-  int _selectedIndex = 0; 
-  Map<String, dynamic>? _usuarioLogado;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _carregarUsuario();
-  }
-
-  Future<void> _carregarUsuario() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userString = prefs.getString('usuario_dados');
-    if (userString != null) {
-      setState(() {
-        _usuarioLogado = jsonDecode(userString);
-        _loading = false;
-      });
-    } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
-    }
-  }
-
-  Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    if (!mounted) return;
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
-  }
+  int _indiceSelecionado = 0;
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
-    bool isMaster = _usuarioLogado != null && _usuarioLogado!['nivel'] == 'master';
-
-    // Lista de Menus
-    List<NavigationRailDestination> menuItens = [
-      const NavigationRailDestination(
-        icon: Icon(Icons.apartment_outlined),
-        selectedIcon: Icon(Icons.apartment),
-        label: Text('Condomínios'),
-      ),
+    // Lista de telas para o menu lateral
+    // REMOVIDO O 'const' DA LISTA POIS AS TELAS AGORA SÃO DINÂMICAS
+    final List<Widget> _telas = [
+      const DashboardScreen(),
+      const UnidadesScreen(),
+      const UsuariosScreen(),
+      // AQUI ESTÁ A MUDANÇA: Passamos o tenantId do usuário logado para a auditoria
+      LeiturasScreenWeb(tenantId: usuarioLogado?.tenantId ?? 1), 
     ];
-
-    List<Widget> telas = [
-      CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
-    ];
-
-    if (isMaster) {
-      menuItens.add(const NavigationRailDestination(
-        icon: Icon(Icons.people_outline),
-        selectedIcon: Icon(Icons.people),
-        label: Text('Usuários / Equipe'),
-      ));
-      telas.add(const UsuariosScreenWeb());
-    }
-
-    menuItens.add(const NavigationRailDestination(
-      icon: Icon(Icons.water_drop_outlined),
-      selectedIcon: Icon(Icons.water_drop),
-      label: Text('Leituras'),
-    ));
-    telas.add(const LeiturasScreenWeb());
-
-    menuItens.add(const NavigationRailDestination(
-      icon: Icon(Icons.bar_chart_outlined),
-      selectedIcon: Icon(Icons.bar_chart),
-      label: Text('Relatórios'),
-    ));
-    telas.add(const RelatoriosScreenWeb());
 
     return Scaffold(
-      backgroundColor: Colors.blue[50],
-      appBar: AppBar(
-        title: Text('CondoLogic', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, letterSpacing: 1)),
-        centerTitle: false,
-        backgroundColor: Colors.blue[900], 
-        elevation: 0,
-        actions: [
-          Center(
-            child: Chip(
-              avatar: const Icon(Icons.person, color: Colors.white, size: 18),
-              label: Text(_usuarioLogado?['nome'] ?? 'Usuário', style: const TextStyle(color: Colors.white)),
-              backgroundColor: Colors.blue[800],
-            ),
-          ),
-          const SizedBox(width: 10),
-          IconButton(icon: const Icon(Icons.exit_to_app), onPressed: _logout, tooltip: 'Sair'),
-          const SizedBox(width: 20),
-        ],
-      ),
       body: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // MENU LATERAL CORRIGIDO (Não estica infinito)
-          LayoutBuilder(
-            builder: (context, constraint) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraint.maxHeight),
-                  child: IntrinsicHeight(
-                    child: NavigationRail(
-                      extended: true,
-                      backgroundColor: Colors.white,
-                      elevation: 5,
-                      selectedIndex: _selectedIndex,
-                      onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
-                      selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
-                      unselectedIconTheme: const IconThemeData(color: Colors.grey, size: 24),
-                      selectedLabelTextStyle: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold),
-                      unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                      destinations: menuItens,
-                    ),
-                  ),
-                ),
-              );
-            }
+          // --- MENU LATERAL (DRAWER FIXO) ---
+          NavigationRail(
+            selectedIndex: _indiceSelecionado,
+            onDestinationSelected: (int index) {
+              setState(() {
+                _indiceSelecionado = index;
+              });
+            },
+            labelType: NavigationRailLabelType.all,
+            backgroundColor: Colors.blueGrey[900],
+            unselectedIconTheme: const IconThemeData(color: Colors.white70),
+            selectedIconTheme: const IconThemeData(color: Colors.white),
+            unselectedLabelTextStyle: const TextStyle(color: Colors.white70),
+            selectedLabelTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.dashboard),
+                label: Text('Dashboard'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.apartment),
+                label: Text('Unidades'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.people),
+                label: Text('Usuários'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.fact_check), // Ícone de Auditoria
+                label: Text('Auditoria IA'),
+              ),
+            ],
           ),
           
-          // CONTEÚDO
+          const VerticalDivider(thickness: 1, width: 1),
+
+          // --- CONTEÚDO PRINCIPAL ---
           Expanded(
             child: Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2)],
-              ),
-              child: _selectedIndex < telas.length ? telas[_selectedIndex] : const Center(child: Text("Tela não encontrada")),
+              color: Colors.grey[100],
+              child: _telas[_indiceSelecionado],
             ),
           ),
         ],
