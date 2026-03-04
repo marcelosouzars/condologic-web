@@ -1,113 +1,72 @@
-import 'dart:convert';
+// ==========================================>>> login_screen_web.dart
+
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_service_web.dart';
-import 'main_web_screen.dart';
+import 'main_web_screen.dart'; // Certifique-se que o import está correto
 
 class LoginScreenWeb extends StatefulWidget {
-  const LoginScreenWeb({super.key});
   @override
-  State<LoginScreenWeb> createState() => _LoginScreenWebState();
+  _LoginScreenWebState createState() => _LoginScreenWebState();
 }
 
 class _LoginScreenWebState extends State<LoginScreenWeb> {
-  final _cpfController = TextEditingController();
-  final _senhaController = TextEditingController();
-  final _apiService = ApiServiceWeb();
-  bool _isLoading = false;
+  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _passController = TextEditingController();
 
-  Future<void> _fazerLogin() async {
-    setState(() => _isLoading = true);
-    try {
-      final resultado = await _apiService.login(
-        _cpfController.text,
-        _senhaController.text,
-      );
-
-      final nivel = resultado['user']['nivel']; 
-      final tipo = resultado['user']['role'];  
-
-      // Trava de segurança visual
-      if (nivel != 'master' && tipo != 'sindico') {
-        throw Exception('Acesso restrito! Zeladores devem usar o App.');
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', 'sessao_ativa'); 
-      await prefs.setString('usuario_dados', jsonEncode(resultado['user']));
-
-      if (!mounted) return;
-      // Animação suave na troca de tela
+  void _login() {
+    // Simulação de login para o síndico
+    // No futuro, você pode conectar com /api/login do backend
+    if (_userController.text == "admin" && _passController.text == "condo123") {
       Navigator.pushReplacement(
-        context, 
+        context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const MainWebScreen(),
-          transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-        )
+          pageBuilder: (_, __, ___) => MainWebScreen(), // REMOVIDO O 'const' DAQUI
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        ),
       );
-      
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red));
-    } finally {
-      if(mounted) setState(() => _isLoading = false);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Usuário ou senha inválidos")),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Fundo com gradiente suave para ficar moderno
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.blue[900]!, Colors.blue[600]!],
+      body: Center(
+        child: Container(
+          width: 400,
+          padding: EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
           ),
-        ),
-        child: Center(
-          child: Card(
-            elevation: 10, // Sombra bonita
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Container(
-              width: 400,
-              padding: const EdgeInsets.all(40),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.shield_moon, size: 70, color: Colors.blue[900]),
-                  const SizedBox(height: 20),
-                  Text('CondoLogic', style: GoogleFonts.montserrat(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                  Text('Painel Administrativo', style: GoogleFonts.montserrat(fontSize: 14, color: Colors.grey[600])),
-                  const SizedBox(height: 40),
-                  
-                  TextField(
-                    controller: _cpfController, 
-                    decoration: const InputDecoration(labelText: 'CPF', prefixIcon: Icon(Icons.person_outline))
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _senhaController, 
-                    obscureText: true, 
-                    decoration: const InputDecoration(labelText: 'Senha', prefixIcon: Icon(Icons.lock_outline))
-                  ),
-                  const SizedBox(height: 30),
-                  
-                  SizedBox(
-                    width: double.infinity, 
-                    height: 50, 
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _fazerLogin, 
-                      child: _isLoading 
-                        ? const CircularProgressIndicator(color: Colors.white) 
-                        : const Text('ENTRAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
-                    )
-                  ),
-                ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("CONDOLOGIC ADMIN", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+              SizedBox(height: 30),
+              TextField(
+                controller: _userController,
+                decoration: InputDecoration(labelText: "Usuário", border: OutlineInputBorder()),
               ),
-            ),
+              SizedBox(height: 20),
+              TextField(
+                controller: _passController,
+                obscureText: true,
+                decoration: InputDecoration(labelText: "Senha", border: OutlineInputBorder()),
+              ),
+              SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _login,
+                  child: Text("ENTRAR NO PAINEL"),
+                ),
+              ),
+            ],
           ),
         ),
       ),
