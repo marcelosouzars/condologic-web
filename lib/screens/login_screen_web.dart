@@ -1,20 +1,23 @@
-// ==========================================>>> login_screen_web.dart
+// ==========================================>>> login_screen.dart
 
 import 'package:flutter/material.dart';
-import 'main_web_screen.dart'; // Certifique-se que o import está correto
+import 'dashboard_screen.dart';
 
-class LoginScreenWeb extends StatefulWidget {
+class LoginScreen extends StatefulWidget {
   @override
-  _LoginScreenWebState createState() => _LoginScreenWebState();
+  _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenWebState extends State<LoginScreenWeb> {
-  final TextEditingController _userController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _cpfController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
 
-  void _login() {
-    // Ajustado para o seu usuário MASTER
-    if (_userController.text == "000.000.000-00" && _passController.text == "123456") {
+ void _login() {
+    String userDigitado = _userController.text.trim();
+    String senhaDigitada = _passController.text.trim();
+
+    // Aceita com pontos ou apenas números para não ter erro
+    if ((userDigitado == "000.000.000-00" || userDigitado == "00000000000") && senhaDigitada == "123456") {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
@@ -24,7 +27,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Usuário ou senha inválidos")),
+        const SnackBar(content: Text("Usuário ou senha inválidos. Tente CPF e 123456.")),
       );
     }
   }
@@ -32,41 +35,16 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Container(
-          width: 400,
-          padding: EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("CONDOLOGIC ADMIN", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-              SizedBox(height: 30),
-              TextField(
-                controller: _userController,
-                decoration: InputDecoration(labelText: "Usuário", border: OutlineInputBorder()),
-              ),
-              SizedBox(height: 20),
-              TextField(
-                controller: _passController,
-                obscureText: true,
-                decoration: InputDecoration(labelText: "Senha", border: OutlineInputBorder()),
-              ),
-              SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _login,
-                  child: Text("ENTRAR NO PAINEL"),
-                ),
-              ),
-            ],
-          ),
+      appBar: AppBar(title: Text("CONDOLOGIC - Login")),
+      body: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          children: [
+            TextField(controller: _cpfController, decoration: InputDecoration(labelText: "CPF")),
+            TextField(controller: _passController, obscureText: true, decoration: InputDecoration(labelText: "Senha")),
+            SizedBox(height: 20),
+            ElevatedButton(onPressed: _fazerLogin, child: Text("ENTRAR")),
+          ],
         ),
       ),
     );
