@@ -13,19 +13,18 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   final TextEditingController _passController = TextEditingController();
 
   void _login() {
-    // Simulação de login para o síndico
-    // No futuro, você pode conectar com /api/login do backend
-    if (_userController.text == "admin" && _passController.text == "condo123") {
+    // Ajustado para o seu usuário MASTER
+    if (_userController.text == "000.000.000-00" && _passController.text == "123456") {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => MainWebScreen(), // REMOVIDO O 'const' DAQUI
+          pageBuilder: (_, __, ___) => MainWebScreen(),
           transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Usuário ou senha inválidos")),
+        const SnackBar(content: Text("Usuário ou senha inválidos")),
       );
     }
   }
