@@ -38,7 +38,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         _loading = false;
       });
     } else {
-      // Se não tiver ninguém logado na memória, chuta pra tela de login
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
       });
@@ -47,7 +46,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
 
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Limpa a memória
+    await prefs.clear(); 
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
@@ -56,10 +55,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     
-    // Captura o ID do Condomínio logado (se for Master, pode vir nulo, então usamos 1 provisoriamente para não quebrar a tela de leituras)
     int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
     
-    // --- CONSTRUÇÃO DO MENU ---
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(
         icon: Icon(Icons.apartment_outlined),
@@ -88,51 +85,47 @@ class _MainWebScreenState extends State<MainWebScreen> {
       ),
     ];
     
-    // --- CONSTRUÇÃO DAS TELAS (Na mesma ordem do menu) ---
     List<Widget> telas = [
-      // A) CONDOMÍNIOS
       CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
-      
-      // B) USUÁRIOS / EQUIPE
-      const UsuariosScreenWeb(), // Em breve vamos passar o usuarioLogado pra cá também para travar o Síndico
-      
-      // C) LEITURAS
+      const UsuariosScreenWeb(), 
       LeiturasScreenWeb(tenantId: tenantIdAtual),
-      
-      // D) RELATÓRIOS
       const RelatoriosScreenWeb(),
-      
-      // E) EXPORTAR DADOS (Provisoriamente apontando para a tela de relatórios que já tem os botões de CSV/PDF)
-      const RelatoriosScreenWeb(),
+      const RelatoriosScreenWeb(), // Provisório até recriarmos a tela de exportação
     ];
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
-        title: Text('CondoLogic', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, letterSpacing: 1)),
+        // TEXTO EM BRANCO NO FUNDO AZUL
+        title: Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
         centerTitle: false,
         backgroundColor: Colors.blue[900], 
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
           Center(
             child: Chip(
-              avatar: const Icon(Icons.person, color: Colors.white, size: 18),
+              avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
               label: Text(
                 "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
-                style: const TextStyle(color: Colors.white)
+                style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
               ),
-              backgroundColor: Colors.blue[800],
+              backgroundColor: Colors.white,
             ),
           ),
-          const SizedBox(width: 10),
-          IconButton(icon: const Icon(Icons.exit_to_app), onPressed: _logout, tooltip: 'Sair'),
+          const SizedBox(width: 15),
+          // BOTÃO SAIR EM BRANCO E BEM CLARO
+          TextButton.icon(
+            onPressed: _logout, 
+            icon: const Icon(Icons.exit_to_app, color: Colors.white), 
+            label: const Text('SAIR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
           const SizedBox(width: 20),
         ],
       ),
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // MENU LATERAL 
           LayoutBuilder(
             builder: (context, constraint) {
               return SingleChildScrollView(
@@ -157,7 +150,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
             }
           ),
           
-          // CONTEÚDO DINÂMICO DA TELA SELECIONADA
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(20),
