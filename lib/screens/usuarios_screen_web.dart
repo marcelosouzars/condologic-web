@@ -37,6 +37,14 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     _carregarDados();
   }
 
+  // Função blindada para checar se é Master
+  bool _verificarSeMaster() {
+    if (_usuarioLogado == null) return false;
+    String nivelAcesso = _usuarioLogado!['nivel_acesso']?.toString().toLowerCase() ?? 
+                         _usuarioLogado!['nivel']?.toString().toLowerCase() ?? '';
+    return nivelAcesso == 'master';
+  }
+
   Future<void> _carregarDados() async {
     setState(() => _isLoading = true);
     try {
@@ -47,18 +55,21 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         _usuarioLogado = jsonDecode(userString);
       }
 
+      bool isMaster = _verificarSeMaster();
       int tenantId = _usuarioLogado?['tenant_id'] ?? 1;
-      bool isMaster = _usuarioLogado?['nivel_acesso'] == 'master';
 
       // 2. Busca a lista de Condomínios (Para o Master poder escolher no cadastro)
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
 
-      // 3. Buscar usuários no backend baseados no nível de acesso
+      // 3. Buscar usuários no backend
+      // Se for Master, busca TODOS. Se for Síndico, busca só os do condomínio dele.
       String rotaUsuarios = isMaster 
           ? '$baseUrl/api/usuarios' 
           : '$baseUrl/api/usuarios?tenant_id=$tenantId';
+
+      print("Buscando usuários na rota: \$rotaUsuarios"); // Espião no F12 para garantir a rota
 
       final response = await http.get(Uri.parse(rotaUsuarios));
 
@@ -66,11 +77,13 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         _condominios = dadosCondo;
         if (response.statusCode == 200) {
           _usuarios = json.decode(response.body);
+        } else {
+          print("Erro da API ao buscar usuários: \${response.statusCode} - \${response.body}");
         }
         _isLoading = false;
       });
     } catch (e) {
-      print("Erro ao carregar usuários: $e");
+      print("Erro ao carregar usuários: \$e");
       setState(() => _isLoading = false);
     }
   }
@@ -83,7 +96,8 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   }
 
   Future<void> _excluirUsuario(Map<String, dynamic> usuario) async {
-    if (usuario['nivel_acesso']?.toString().toLowerCase() == 'master') {
+    String nivelAlvo = usuario['nivel_acesso']?.toString().toLowerCase() ?? usuario['nivel']?.toString().toLowerCase() ?? '';
+    if (nivelAlvo == 'master') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ação Bloqueada: O usuário MASTER não pode ser excluído.'), backgroundColor: Colors.red),
       );
@@ -91,7 +105,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     }
 
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/${usuario['id']}'));
+      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/\${usuario['id']}'));
       if (response.statusCode == 200 || response.statusCode == 204) {
         _carregarDados();
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
@@ -99,7 +113,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         throw Exception("Erro no servidor ao excluir.");
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: \$e'), backgroundColor: Colors.red));
     }
   }
 
@@ -114,7 +128,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
             Text('Excluir Usuário'),
           ],
         ),
-        content: Text('Deseja realmente remover o usuário:\n\n"${u['nome']}"?'),
+        content: Text('Deseja realmente remover o usuário:\n\n"\${u['nome']}"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELA', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -137,7 +151,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     _tipoSelecionado = 'Síndico';
     _nivelSelecionado = 'usuario';
     
-    bool isMaster = _usuarioLogado?['nivel_acesso'] == 'master';
+    bool isMaster = _verificarSeMaster();
     
     // Se for Master, começa vazio obrigando a escolher. Se for Síndico, já crava o condomínio dele.
     _condominioSelecionado = isMaster ? null : _usuarioLogado?['tenant_id'];
@@ -211,7 +225,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                     }
 
                     Navigator.pop(context);
-                    // Lógica futura de salvar via POST no backend usará a variável _condominioSelecionado
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Função de salvar em construção na API.'), backgroundColor: Colors.orange));
                   },
                   icon: const Icon(Icons.save, color: Colors.white),
@@ -228,7 +241,9 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    bool podeEditar = (_usuarioLogado?['nivel_acesso'] == 'master' || _usuarioLogado?['nivel_acesso'] == 'admin');
+    bool isMaster = _verificarSeMaster();
+    // No seu sistema, Master e Admin podem editar. Ajuste se Síndico for admin
+    bool podeEditar = isMaster || (_usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'admin');
 
     return Column(
       children: [
@@ -250,39 +265,41 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         Expanded(
           child: _isLoading 
             ? const Center(child: CircularProgressIndicator()) 
-            : ListView.builder(
-                itemCount: _usuarios.length, 
-                itemBuilder: (ctx, index) {
-                  final u = _usuarios[index];
-                  bool isMaster = (u['nivel_acesso']?.toString().toLowerCase() == 'master');
-                  
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 2,
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: isMaster ? Colors.red[900] : Colors.blue[100],
-                        child: Icon(isMaster ? Icons.admin_panel_settings : Icons.person, color: isMaster ? Colors.white : Colors.blue[900]),
-                      ),
-                      title: Text(u['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      // AQUI MOSTRAMOS O CONDOMÍNIO AO QUAL ELE PERTENCE
-                      subtitle: Text('Condomínio: ${_getNomeCondominio(u['tenant_id'])}\nCargo: ${u['tipo'] ?? '-'} | Nível: ${u['nivel_acesso']?.toString().toUpperCase() ?? '-'}'),
-                      isThreeLine: true,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (podeEditar)
-                            IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () {}),
-                          if (podeEditar && !isMaster)
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmarExclusao(u)),
-                          if (isMaster)
-                            const Tooltip(message: "Usuário Protegido", child: Padding(padding: EdgeInsets.all(8.0), child: Icon(Icons.lock, color: Colors.grey))),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-              )
+            : _usuarios.isEmpty
+                ? const Center(child: Text('Nenhum usuário encontrado.', style: TextStyle(fontSize: 16, color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: _usuarios.length, 
+                    itemBuilder: (ctx, index) {
+                      final u = _usuarios[index];
+                      String nivelUser = u['nivel_acesso']?.toString().toLowerCase() ?? u['nivel']?.toString().toLowerCase() ?? '';
+                      bool isEsteUsuarioMaster = nivelUser == 'master';
+                      
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: isEsteUsuarioMaster ? Colors.red[900] : Colors.blue[100],
+                            child: Icon(isEsteUsuarioMaster ? Icons.admin_panel_settings : Icons.person, color: isEsteUsuarioMaster ? Colors.white : Colors.blue[900]),
+                          ),
+                          title: Text(u['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Condomínio: ${_getNomeCondominio(u['tenant_id'])}\nCargo: ${u['tipo'] ?? '-'} | Nível: ${nivelUser.toUpperCase()}'),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (podeEditar)
+                                IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () {}),
+                              if (podeEditar && !isEsteUsuarioMaster)
+                                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmarExclusao(u)),
+                              if (isEsteUsuarioMaster)
+                                const Tooltip(message: "Usuário Protegido", child: Padding(padding: EdgeInsets.all(8.0), child: Icon(Icons.lock, color: Colors.grey))),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  )
         ),
       ]
     );
