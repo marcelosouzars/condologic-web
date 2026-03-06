@@ -38,72 +38,73 @@ class _MainWebScreenState extends State<MainWebScreen> {
         _loading = false;
       });
     } else {
-      // MOCK FIXO PARA TESTE: Mantém como MASTER para não travar a tela
-      setState(() {
-        _usuarioLogado = {
-          'nome': 'Master (Desenvolvimento)',
-          'nivel': 'master',
-          'tenant': {'id': 1, 'nome': 'Condomínio Piloto'}
-        };
-        _loading = false;
+      // Se não tiver ninguém logado na memória, chuta pra tela de login
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
       });
     }
   }
 
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.clear(); // Limpa a memória
     if (!mounted) return;
-    // CORREÇÃO 1: Removido o 'const' daqui
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreenWeb()));
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     
-    bool isMaster = _usuarioLogado != null && _usuarioLogado!['nivel'] == 'master';
+    // Captura o ID do Condomínio logado (se for Master, pode vir nulo, então usamos 1 provisoriamente para não quebrar a tela de leituras)
+    int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
     
-    // Pegamos o ID do Condomínio logado (ou 1 por padrão para não quebrar)
-    int tenantIdAtual = _usuarioLogado?['tenant']?['id'] ?? 1;
-    
-    // Lista de Menus
+    // --- CONSTRUÇÃO DO MENU ---
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(
         icon: Icon(Icons.apartment_outlined),
         selectedIcon: Icon(Icons.apartment),
         label: Text('Condomínios'),
       ),
-    ];
-    
-    // Lista de Telas Correspondentes
-    List<Widget> telas = [
-      CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
-    ];
-    
-    if (isMaster) {
-      menuItens.add(const NavigationRailDestination(
+      const NavigationRailDestination(
         icon: Icon(Icons.people_outline),
         selectedIcon: Icon(Icons.people),
         label: Text('Usuários / Equipe'),
-      ));
-      telas.add(const UsuariosScreenWeb());
-    }
-
-    menuItens.add(const NavigationRailDestination(
-      icon: Icon(Icons.water_drop_outlined),
-      selectedIcon: Icon(Icons.water_drop),
-      label: Text('Leituras'),
-    ));
-    // CORREÇÃO 2: Passamos o tenantId obrigatório para a tela de Leituras (sem 'const')
-    telas.add(LeiturasScreenWeb(tenantId: tenantIdAtual));
-
-    menuItens.add(const NavigationRailDestination(
-      icon: Icon(Icons.bar_chart_outlined),
-      selectedIcon: Icon(Icons.bar_chart),
-      label: Text('Relatórios'),
-    ));
-    telas.add(const RelatoriosScreenWeb());
+      ),
+      const NavigationRailDestination(
+        icon: Icon(Icons.water_drop_outlined),
+        selectedIcon: Icon(Icons.water_drop),
+        label: Text('Leituras'),
+      ),
+      const NavigationRailDestination(
+        icon: Icon(Icons.bar_chart_outlined),
+        selectedIcon: Icon(Icons.bar_chart),
+        label: Text('Relatórios'),
+      ),
+      const NavigationRailDestination(
+        icon: Icon(Icons.download_outlined),
+        selectedIcon: Icon(Icons.download),
+        label: Text('Exportar Dados'),
+      ),
+    ];
+    
+    // --- CONSTRUÇÃO DAS TELAS (Na mesma ordem do menu) ---
+    List<Widget> telas = [
+      // A) CONDOMÍNIOS
+      CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
+      
+      // B) USUÁRIOS / EQUIPE
+      const UsuariosScreenWeb(), // Em breve vamos passar o usuarioLogado pra cá também para travar o Síndico
+      
+      // C) LEITURAS
+      LeiturasScreenWeb(tenantId: tenantIdAtual),
+      
+      // D) RELATÓRIOS
+      const RelatoriosScreenWeb(),
+      
+      // E) EXPORTAR DADOS (Provisoriamente apontando para a tela de relatórios que já tem os botões de CSV/PDF)
+      const RelatoriosScreenWeb(),
+    ];
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
@@ -116,7 +117,10 @@ class _MainWebScreenState extends State<MainWebScreen> {
           Center(
             child: Chip(
               avatar: const Icon(Icons.person, color: Colors.white, size: 18),
-              label: Text(_usuarioLogado?['nome'] ?? 'Usuário', style: const TextStyle(color: Colors.white)),
+              label: Text(
+                "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
+                style: const TextStyle(color: Colors.white)
+              ),
               backgroundColor: Colors.blue[800],
             ),
           ),
@@ -153,7 +157,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
             }
           ),
           
-          // CONTEÚDO DINÂMICO
+          // CONTEÚDO DINÂMICO DA TELA SELECIONADA
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(20),
@@ -165,7 +169,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
               ),
               child: _selectedIndex < telas.length 
                 ? telas[_selectedIndex] 
-                : const Center(child: Text("Tela não encontrada")),
+                : const Center(child: Text("Tela em construção...")),
             ),
           ),
         ],
