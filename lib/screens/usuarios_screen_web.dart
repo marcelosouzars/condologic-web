@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../services/api_service_web.dart'; 
 
 class UsuariosScreenWeb extends StatefulWidget {
   const UsuariosScreenWeb({super.key});
@@ -14,7 +15,9 @@ class UsuariosScreenWeb extends StatefulWidget {
 }
 
 class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
+  final ApiServiceWeb _apiService = ApiServiceWeb();
   List<dynamic> _usuarios = [];
+  List<dynamic> _condominios = [];
   bool _isLoading = true;
   Map<String, dynamic>? _usuarioLogado;
   
@@ -24,8 +27,9 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   final _nomeController = TextEditingController();
   final _cpfController = TextEditingController();
   final _senhaController = TextEditingController();
-  String _tipoSelecionado = 'Zelador';
+  String _tipoSelecionado = 'Síndico';
   String _nivelSelecionado = 'usuario';
+  int? _condominioSelecionado; 
 
   @override
   void initState() {
@@ -43,34 +47,45 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         _usuarioLogado = jsonDecode(userString);
       }
 
-      // 2. Buscar usuários no backend
-      // Se for Síndico, busca só do tenant dele. Se for Master, busca todos.
       int tenantId = _usuarioLogado?['tenant_id'] ?? 1;
-      String rota = _usuarioLogado?['nivel_acesso'] == 'master' 
-          ? '$baseUrl/api/usuarios' // Rota genérica para o master (ajuste conforme seu backend)
+      bool isMaster = _usuarioLogado?['nivel_acesso'] == 'master';
+
+      // 2. Busca a lista de Condomínios (Para o Master poder escolher no cadastro)
+      int? userId = _usuarioLogado?['id'];
+      String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
+      final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
+
+      // 3. Buscar usuários no backend baseados no nível de acesso
+      String rotaUsuarios = isMaster 
+          ? '$baseUrl/api/usuarios' 
           : '$baseUrl/api/usuarios?tenant_id=$tenantId';
 
-      final response = await http.get(Uri.parse(rota));
+      final response = await http.get(Uri.parse(rotaUsuarios));
 
-      if (response.statusCode == 200) {
-        setState(() {
+      setState(() {
+        _condominios = dadosCondo;
+        if (response.statusCode == 200) {
           _usuarios = json.decode(response.body);
-          _isLoading = false;
-        });
-      } else {
-        setState(() => _isLoading = false);
-      }
+        }
+        _isLoading = false;
+      });
     } catch (e) {
       print("Erro ao carregar usuários: $e");
       setState(() => _isLoading = false);
     }
   }
 
+  // Função auxiliar para mostrar de qual condomínio é o usuário
+  String _getNomeCondominio(int? tenantId) {
+    if (tenantId == null) return 'Acesso Global / Master';
+    final condo = _condominios.firstWhere((c) => c['id'] == tenantId, orElse: () => null);
+    return condo != null ? condo['nome'] : 'Condomínio Desconhecido';
+  }
+
   Future<void> _excluirUsuario(Map<String, dynamic> usuario) async {
-    // TRAVA DE SEGURANÇA: NUNCA EXCLUIR O MASTER
     if (usuario['nivel_acesso']?.toString().toLowerCase() == 'master') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ação Bloqueada: O usuário MASTER não pode ser excluído pelo sistema.'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('Ação Bloqueada: O usuário MASTER não pode ser excluído.'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -81,7 +96,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         _carregarDados();
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
       } else {
-        throw Exception("Erro no servidor");
+        throw Exception("Erro no servidor ao excluir.");
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
@@ -119,8 +134,13 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     _nomeController.clear();
     _cpfController.clear();
     _senhaController.clear();
-    _tipoSelecionado = 'Zelador';
+    _tipoSelecionado = 'Síndico';
     _nivelSelecionado = 'usuario';
+    
+    bool isMaster = _usuarioLogado?['nivel_acesso'] == 'master';
+    
+    // Se for Master, começa vazio obrigando a escolher. Se for Síndico, já crava o condomínio dele.
+    _condominioSelecionado = isMaster ? null : _usuarioLogado?['tenant_id'];
 
     showDialog(
       context: context,
@@ -136,6 +156,22 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Se for MASTER, mostra o dropdown para ele escolher o Condomínio do novo usuário
+                      if (isMaster) ...[
+                        DropdownButtonFormField<int>(
+                          value: _condominioSelecionado,
+                          decoration: const InputDecoration(labelText: 'Vincular ao Condomínio', border: OutlineInputBorder()),
+                          items: _condominios.map<DropdownMenuItem<int>>((c) {
+                            return DropdownMenuItem<int>(
+                              value: c['id'],
+                              child: Text(c['nome']),
+                            );
+                          }).toList(),
+                          onChanged: (novo) => setStateModal(() => _condominioSelecionado = novo),
+                        ),
+                        const SizedBox(height: 15),
+                      ],
+
                       TextField(controller: _nomeController, decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())),
                       const SizedBox(height: 15),
                       TextField(controller: _cpfController, decoration: const InputDecoration(labelText: 'CPF (Apenas números)', border: OutlineInputBorder())),
@@ -155,7 +191,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       
                       DropdownButtonFormField<String>(
                         value: _nivelSelecionado,
-                        decoration: const InputDecoration(labelText: 'Nível de Acesso', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: 'Nível no Sistema', border: OutlineInputBorder()),
                         items: ['usuario', 'admin'].map((String valor) {
                           return DropdownMenuItem<String>(value: valor, child: Text(valor.toUpperCase()));
                         }).toList(),
@@ -169,8 +205,13 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
                 ElevatedButton.icon(
                   onPressed: () {
+                    if (isMaster && _condominioSelecionado == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione um Condomínio!'), backgroundColor: Colors.red));
+                      return;
+                    }
+
                     Navigator.pop(context);
-                    // Aqui entra a lógica de salvar na API (Post)
+                    // Lógica futura de salvar via POST no backend usará a variável _condominioSelecionado
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Função de salvar em construção na API.'), backgroundColor: Colors.orange));
                   },
                   icon: const Icon(Icons.save, color: Colors.white),
@@ -224,16 +265,16 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                         child: Icon(isMaster ? Icons.admin_panel_settings : Icons.person, color: isMaster ? Colors.white : Colors.blue[900]),
                       ),
                       title: Text(u['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('Cargo: ${u['tipo'] ?? '-'} | Nível: ${u['nivel_acesso']?.toString().toUpperCase() ?? '-'}'),
+                      // AQUI MOSTRAMOS O CONDOMÍNIO AO QUAL ELE PERTENCE
+                      subtitle: Text('Condomínio: ${_getNomeCondominio(u['tenant_id'])}\nCargo: ${u['tipo'] ?? '-'} | Nível: ${u['nivel_acesso']?.toString().toUpperCase() ?? '-'}'),
+                      isThreeLine: true,
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (podeEditar)
                             IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () {}),
-                          // SÓ MOSTRA A LIXEIRA SE NÃO FOR MASTER
                           if (podeEditar && !isMaster)
                             IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmarExclusao(u)),
-                          // SE FOR MASTER, MOSTRA UM CADEADO
                           if (isMaster)
                             const Tooltip(message: "Usuário Protegido", child: Padding(padding: EdgeInsets.all(8.0), child: Icon(Icons.lock, color: Colors.grey))),
                         ],
