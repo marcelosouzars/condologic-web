@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
-// Certifique-se de que estes ficheiros existem na sua pasta
 import 'condominios_screen_web.dart';
 import 'usuarios_screen_web.dart';
 import 'leituras_screen_web.dart';   
@@ -39,7 +38,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
         _loading = false;
       });
     } else {
-      // MOCK FIXO PARA TESTE: Mantém você como MASTER para não travar a tela
+      // MOCK FIXO PARA TESTE: Mantém como MASTER para não travar a tela
       setState(() {
         _usuarioLogado = {
           'nome': 'Master (Desenvolvimento)',
@@ -55,7 +54,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (!mounted) return;
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
+    // CORREÇÃO 1: Removido o 'const' daqui
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreenWeb()));
   }
 
   @override
@@ -63,6 +63,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     
     bool isMaster = _usuarioLogado != null && _usuarioLogado!['nivel'] == 'master';
+    
+    // Pegamos o ID do Condomínio logado (ou 1 por padrão para não quebrar)
+    int tenantIdAtual = _usuarioLogado?['tenant']?['id'] ?? 1;
     
     // Lista de Menus
     List<NavigationRailDestination> menuItens = [
@@ -92,7 +95,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
       selectedIcon: Icon(Icons.water_drop),
       label: Text('Leituras'),
     ));
-    telas.add(const LeiturasScreenWeb());
+    // CORREÇÃO 2: Passamos o tenantId obrigatório para a tela de Leituras (sem 'const')
+    telas.add(LeiturasScreenWeb(tenantId: tenantIdAtual));
 
     menuItens.add(const NavigationRailDestination(
       icon: Icon(Icons.bar_chart_outlined),
