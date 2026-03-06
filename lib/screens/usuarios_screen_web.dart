@@ -69,7 +69,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
           ? '$baseUrl/api/usuarios' 
           : '$baseUrl/api/usuarios?tenant_id=$tenantId';
 
-      print("Buscando usuários na rota: \$rotaUsuarios"); // Espião no F12 para garantir a rota
+      print("Buscando usuários na rota: $rotaUsuarios");
 
       final response = await http.get(Uri.parse(rotaUsuarios));
 
@@ -78,12 +78,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         if (response.statusCode == 200) {
           _usuarios = json.decode(response.body);
         } else {
-          print("Erro da API ao buscar usuários: \${response.statusCode} - \${response.body}");
+          print("Erro da API ao buscar usuários: ${response.statusCode} - ${response.body}");
         }
         _isLoading = false;
       });
     } catch (e) {
-      print("Erro ao carregar usuários: \$e");
+      print("Erro ao carregar usuários: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -105,7 +105,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     }
 
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/\${usuario['id']}'));
+      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/${usuario['id']}'));
       if (response.statusCode == 200 || response.statusCode == 204) {
         _carregarDados();
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
@@ -113,7 +113,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         throw Exception("Erro no servidor ao excluir.");
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: \$e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -128,7 +128,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
             Text('Excluir Usuário'),
           ],
         ),
-        content: Text('Deseja realmente remover o usuário:\n\n"\${u['nome']}"?'),
+        content: Text('Deseja realmente remover o usuário:\n\n"${u['nome']}"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELA', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -242,7 +242,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   @override
   Widget build(BuildContext context) {
     bool isMaster = _verificarSeMaster();
-    // No seu sistema, Master e Admin podem editar. Ajuste se Síndico for admin
     bool podeEditar = isMaster || (_usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'admin');
 
     return Column(
