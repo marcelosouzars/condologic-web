@@ -23,10 +23,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   
   final String baseUrl = "https://condologic-backend.onrender.com";
 
-  // Controllers do Formulário
+  // Controllers do Formulário e Foco
   final _nomeController = TextEditingController();
   final _cpfController = TextEditingController();
   final _senhaController = TextEditingController();
+  final FocusNode _cpfFocus = FocusNode(); // <--- Para focar no CPF se der erro
+  
   String _tipoSelecionado = 'Síndico';
   String _nivelSelecionado = 'usuario';
   int? _condominioSelecionado; 
@@ -37,7 +39,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     _carregarDados();
   }
 
-  // Função blindada para checar se é Master
+  @override
+  void dispose() {
+    _cpfFocus.dispose();
+    super.dispose();
+  }
+
   bool _verificarSeMaster() {
     if (_usuarioLogado == null) return false;
     String nivelAcesso = _usuarioLogado!['nivel_acesso']?.toString().toLowerCase() ?? 
@@ -57,12 +64,10 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
       bool isMaster = _verificarSeMaster();
       int tenantId = _usuarioLogado?['tenant_id'] ?? 1;
 
-      // Busca a lista de Condomínios 
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
 
-      // Buscar usuários usando a rota correta do adminController
       String rotaUsuarios = isMaster 
           ? '$baseUrl/api/admin/usuarios' 
           : '$baseUrl/api/admin/usuarios?tenant_id=$tenantId';
@@ -73,8 +78,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
         _condominios = dadosCondo;
         if (response.statusCode == 200) {
           _usuarios = json.decode(response.body);
-        } else {
-          print("Erro da API ao buscar usuários: ${response.statusCode} - ${response.body}");
         }
         _isLoading = false;
       });
@@ -88,54 +91,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     if (tenantId == null) return 'Acesso Global / Master';
     final condo = _condominios.firstWhere((c) => c['id'] == tenantId, orElse: () => null);
     return condo != null ? condo['nome'] : 'Condomínio Desconhecido';
-  }
-
-  // --- NOVA FUNÇÃO REAL DE SALVAR NO BANCO ---
-  Future<void> _salvarUsuario() async {
-    bool isMaster = _verificarSeMaster();
-    int? tenantParaSalvar = isMaster ? _condominioSelecionado : _usuarioLogado?['tenant_id'];
-
-    if (tenantParaSalvar == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione um Condomínio!'), backgroundColor: Colors.red));
-      return;
-    }
-
-    if (_nomeController.text.isEmpty || _cpfController.text.isEmpty || _senhaController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos!'), backgroundColor: Colors.red));
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    Navigator.pop(context); // Fecha o modal
-
-    try {
-      final body = {
-        'nome': _nomeController.text,
-        'cpf': _cpfController.text.replaceAll(RegExp(r'[^0-9]'), ''), 
-        'senha': _senhaController.text, 
-        'tipo': _tipoSelecionado,
-        'nivel_acesso': _nivelSelecionado,
-        'tenant_id': tenantParaSalvar
-      };
-
-      // Rota correta apontando para api/admin/usuario
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/admin/usuario'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: Colors.green));
-        _carregarDados(); 
-      } else {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: ${response.body}'), backgroundColor: Colors.red));
-        setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro de conexão: $e'), backgroundColor: Colors.red));
-      setState(() => _isLoading = false);
-    }
   }
 
   Future<void> _excluirUsuario(Map<String, dynamic> usuario) async {
@@ -187,15 +142,41 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     );
   }
 
-  void _abrirModal() {
-    _nomeController.clear();
-    _cpfController.clear();
-    _senhaController.clear();
-    _tipoSelecionado = 'Síndico';
-    _nivelSelecionado = 'usuario';
-    
+  // --- MODAL DE CRIAÇÃO E EDIÇÃO ---
+  void _abrirModal({Map<String, dynamic>? usuarioEdit}) {
     bool isMaster = _verificarSeMaster();
-    _condominioSelecionado = isMaster ? null : _usuarioLogado?['tenant_id'];
+    bool erroCpf = false; 
+    bool isSaving = false;
+    
+    // Preenche se for edição, limpa se for inclusão
+    if (usuarioEdit != null) {
+      _nomeController.text = usuarioEdit['nome'] ?? '';
+      _cpfController.text = usuarioEdit['cpf'] ?? '';
+      _senhaController.text = ''; // Senha vem vazia na edição (só digita se quiser trocar)
+      
+      // Tratamento para garantir que o tipo existe no Dropdown
+      String t = usuarioEdit['tipo'] ?? 'Zelador';
+      if (!['Síndico', 'Zelador', 'Leiturista', 'Administrador'].contains(t)) t = 'Zelador';
+      _tipoSelecionado = t;
+
+      String n = usuarioEdit['nivel_acesso']?.toString().toLowerCase() ?? 'usuario';
+      if (!['usuario', 'admin'].contains(n)) n = 'usuario';
+      _nivelSelecionado = n;
+
+      _condominioSelecionado = usuarioEdit['tenant_id'];
+      
+      // Validação extra caso o condomínio do usuário tenha sido deletado do banco
+      if (_condominioSelecionado != null && !_condominios.any((c) => c['id'] == _condominioSelecionado)) {
+        _condominioSelecionado = null;
+      }
+    } else {
+      _nomeController.clear();
+      _cpfController.clear();
+      _senhaController.clear();
+      _tipoSelecionado = 'Síndico';
+      _nivelSelecionado = 'usuario';
+      _condominioSelecionado = isMaster ? null : _usuarioLogado?['tenant_id'];
+    }
 
     showDialog(
       context: context,
@@ -203,8 +184,73 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateModal) {
+            
+            // FUNÇÃO DE SALVAR INTERNA DO MODAL
+            Future<void> salvarUsuario() async {
+              int? tenantParaSalvar = isMaster ? _condominioSelecionado : _usuarioLogado?['tenant_id'];
+
+              if (tenantParaSalvar == null) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um Condomínio!'), backgroundColor: Colors.red));
+                return;
+              }
+              if (_nomeController.text.isEmpty || _cpfController.text.isEmpty || (usuarioEdit == null && _senhaController.text.isEmpty)) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os campos obrigatórios!'), backgroundColor: Colors.red));
+                return;
+              }
+
+              setStateModal(() { isSaving = true; erroCpf = false; });
+
+              try {
+                final body = {
+                  'nome': _nomeController.text,
+                  'cpf': _cpfController.text.replaceAll(RegExp(r'[^0-9]'), ''), 
+                  'tipo': _tipoSelecionado,
+                  'nivel_acesso': _nivelSelecionado,
+                  'tenant_id': tenantParaSalvar
+                };
+                
+                if (_senhaController.text.isNotEmpty) {
+                  body['senha'] = _senhaController.text;
+                }
+
+                http.Response response;
+
+                // Se tem ID, é Edição (PUT). Se não tem, é Criação (POST).
+                if (usuarioEdit != null) {
+                  response = await http.put(
+                    Uri.parse('$baseUrl/api/admin/usuario/${usuarioEdit['id']}'),
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonEncode(body),
+                  );
+                } else {
+                  response = await http.post(
+                    Uri.parse('$baseUrl/api/admin/usuario'),
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonEncode(body),
+                  );
+                }
+
+                if (response.statusCode == 201 || response.statusCode == 200) {
+                  Navigator.pop(context); // SÓ FECHA SE DER SUCESSO
+                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: Colors.green));
+                  _carregarDados(); 
+                } else if (response.statusCode == 400 && response.body.contains('CPF')) {
+                  // BANCO AVISOU QUE CPF EXISTE! Pinta de vermelho e foca no campo.
+                  setStateModal(() { isSaving = false; erroCpf = true; });
+                  _cpfFocus.requestFocus();
+                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Este CPF já está cadastrado em outro usuário!'), backgroundColor: Colors.red));
+                } else {
+                  setStateModal(() => isSaving = false);
+                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: ${response.body}'), backgroundColor: Colors.red));
+                }
+              } catch (e) {
+                setStateModal(() => isSaving = false);
+                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro de conexão: $e'), backgroundColor: Colors.red));
+              }
+            }
+
             return AlertDialog(
-              title: const Text('INCLUIR USUÁRIO', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(usuarioEdit == null ? 'INCLUIR USUÁRIO' : 'EDITAR USUÁRIO', style: const TextStyle(fontWeight: FontWeight.bold)),
               content: SizedBox(
                 width: 500,
                 child: SingleChildScrollView(
@@ -226,11 +272,43 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                         const SizedBox(height: 15),
                       ],
 
-                      TextField(controller: _nomeController, decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())),
+                      TextField(
+                        controller: _nomeController, 
+                        decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())
+                      ),
                       const SizedBox(height: 15),
-                      TextField(controller: _cpfController, decoration: const InputDecoration(labelText: 'CPF (Apenas números)', border: OutlineInputBorder())),
+                      
+                      // CAMPO DE CPF COM BORDA DINÂMICA
+                      TextField(
+                        controller: _cpfController, 
+                        focusNode: _cpfFocus,
+                        decoration: InputDecoration(
+                          labelText: 'CPF (Apenas números)', 
+                          border: const OutlineInputBorder(),
+                          // Pinta a borda de vermelho se der erro de CPF duplicado
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: erroCpf ? Colors.red : Colors.grey, width: erroCpf ? 2.0 : 1.0),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: erroCpf ? Colors.red : Colors.blue, width: 2.0),
+                          ),
+                        )
+                      ),
+                      if (erroCpf)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 5),
+                          child: Align(alignment: Alignment.centerLeft, child: Text("Verifique o CPF informado.", style: TextStyle(color: Colors.red, fontSize: 12))),
+                        ),
                       const SizedBox(height: 15),
-                      TextField(controller: _senhaController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha de Acesso', border: OutlineInputBorder())),
+                      
+                      TextField(
+                        controller: _senhaController, 
+                        obscureText: true, 
+                        decoration: InputDecoration(
+                          labelText: usuarioEdit == null ? 'Senha de Acesso' : 'Nova Senha (Deixe em branco para não alterar)', 
+                          border: const OutlineInputBorder()
+                        )
+                      ),
                       const SizedBox(height: 15),
                       
                       DropdownButtonFormField<String>(
@@ -245,10 +323,11 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       
                       DropdownButtonFormField<String>(
                         value: _nivelSelecionado,
-                        decoration: const InputDecoration(labelText: 'Nível no Sistema', border: OutlineInputBorder()),
-                        items: ['usuario', 'admin'].map((String valor) {
-                          return DropdownMenuItem<String>(value: valor, child: Text(valor.toUpperCase()));
-                        }).toList(),
+                        decoration: const InputDecoration(labelText: 'Nível no Sistema (Permissão)', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem<String>(value: 'usuario', child: Text('USUARIO (Apenas App Mobile)')),
+                          DropdownMenuItem<String>(value: 'admin', child: Text('ADMIN (Acesso ao Painel Web)')),
+                        ],
                         onChanged: (novo) => setStateModal(() => _nivelSelecionado = novo!),
                       ),
                     ],
@@ -258,9 +337,9 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
                 ElevatedButton.icon(
-                  onPressed: _salvarUsuario, 
-                  icon: const Icon(Icons.save, color: Colors.white),
-                  label: const Text('SALVAR', style: TextStyle(color: Colors.white)),
+                  onPressed: isSaving ? null : salvarUsuario, 
+                  icon: isSaving ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
+                  label: Text(isSaving ? 'SALVANDO...' : 'SALVAR', style: const TextStyle(color: Colors.white)),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 ),
               ],
@@ -284,7 +363,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
             Text('USUÁRIOS / EQUIPE', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
             if (podeEditar)
               ElevatedButton.icon(
-                onPressed: _abrirModal, 
+                onPressed: () => _abrirModal(), // <--- Chama modal de Inclusão
                 icon: const Icon(Icons.person_add, color: Colors.white), 
                 label: const Text('INCLUIR USUÁRIO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
@@ -319,8 +398,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              // BOTÃO DE EDITAR AGORA ABRE O MODAL COM OS DADOS
                               if (podeEditar)
-                                IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () {}),
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.orange), 
+                                  onPressed: () => _abrirModal(usuarioEdit: u)
+                                ),
                               if (podeEditar && !isEsteUsuarioMaster)
                                 IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmarExclusao(u)),
                               if (isEsteUsuarioMaster)
