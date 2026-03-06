@@ -1,7 +1,10 @@
+// ==========================================>>> usuarios_screen_web.dart
+
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/api_service_web.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class UsuariosScreenWeb extends StatefulWidget {
   const UsuariosScreenWeb({super.key});
@@ -11,10 +14,18 @@ class UsuariosScreenWeb extends StatefulWidget {
 }
 
 class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
-  final ApiServiceWeb _apiService = ApiServiceWeb();
   List<dynamic> _usuarios = [];
-  List<dynamic> _condominios = [];
   bool _isLoading = true;
+  Map<String, dynamic>? _usuarioLogado;
+  
+  final String baseUrl = "https://condologic-backend.onrender.com";
+
+  // Controllers do Formulário
+  final _nomeController = TextEditingController();
+  final _cpfController = TextEditingController();
+  final _senhaController = TextEditingController();
+  String _tipoSelecionado = 'Zelador';
+  String _nivelSelecionado = 'usuario';
 
   @override
   void initState() {
@@ -25,205 +36,214 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   Future<void> _carregarDados() async {
     setState(() => _isLoading = true);
     try {
-      final usuarios = await _apiService.getUsuarios();
-      final condominios = await _apiService.getCondominios();
-      setState(() {
-        _usuarios = usuarios;
-        _condominios = condominios;
-        _isLoading = false;
-      });
+      // 1. Descobrir quem está logado
+      final prefs = await SharedPreferences.getInstance();
+      final userString = prefs.getString('usuario_dados');
+      if (userString != null) {
+        _usuarioLogado = jsonDecode(userString);
+      }
+
+      // 2. Buscar usuários no backend
+      // Se for Síndico, busca só do tenant dele. Se for Master, busca todos.
+      int tenantId = _usuarioLogado?['tenant_id'] ?? 1;
+      String rota = _usuarioLogado?['nivel_acesso'] == 'master' 
+          ? '$baseUrl/api/usuarios' // Rota genérica para o master (ajuste conforme seu backend)
+          : '$baseUrl/api/usuarios?tenant_id=$tenantId';
+
+      final response = await http.get(Uri.parse(rota));
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _usuarios = json.decode(response.body);
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
     } catch (e) {
+      print("Erro ao carregar usuários: $e");
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _excluirUsuario(int id) async {
-    if (!await _confirmarExclusao()) return;
+  Future<void> _excluirUsuario(Map<String, dynamic> usuario) async {
+    // TRAVA DE SEGURANÇA: NUNCA EXCLUIR O MASTER
+    if (usuario['nivel_acesso']?.toString().toLowerCase() == 'master') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ação Bloqueada: O usuário MASTER não pode ser excluído pelo sistema.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     try {
-      await _apiService.excluirUsuario(id);
-      _carregarDados();
+      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/${usuario['id']}'));
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        _carregarDados();
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
+      } else {
+        throw Exception("Erro no servidor");
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
     }
   }
 
-  Future<bool> _confirmarExclusao() async {
-    return await showDialog(
-      context: context,
+  void _confirmarExclusao(Map<String, dynamic> u) {
+    showDialog(
+      context: context, 
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar'),
-        content: const Text('Tem certeza que deseja excluir este usuário?'),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 10),
+            Text('Excluir Usuário'),
+          ],
+        ),
+        content: Text('Deseja realmente remover o usuário:\n\n"${u['nome']}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELA', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () { 
+              Navigator.pop(ctx);
+              _excluirUsuario(u); 
+            }, 
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('EXCLUIR', style: TextStyle(color: Colors.white))
+          ),
         ],
-      ),
-    ) ?? false;
+      )
+    );
   }
 
-  void _abrirModalUsuario({Map<String, dynamic>? usuario}) {
-    final nomeController = TextEditingController(text: usuario?['nome'] ?? '');
-    final cpfController = TextEditingController(text: usuario?['cpf'] ?? '');
-    final senhaController = TextEditingController();
-    
-    // =========================================================================
-    // CORREÇÃO CRÍTICA DO ERRO "ASSERTION FAILED" NO DROPDOWN
-    // =========================================================================
-    String tipoDb = usuario?['tipo'] ?? 'leiturista';
-    // Se no banco vier lixo ou termos antigos, convertemos para o padrão atual
-    if (tipoDb == 'zelador' || tipoDb == 'sindico') tipoDb = 'leiturista'; 
-    if (!['leiturista', 'admin', 'master'].contains(tipoDb)) tipoDb = 'leiturista';
-    
-    String tipoSelecionado = tipoDb;
-    int? tenantIdSelecionado = usuario?['tenant_id'];
-    
-    // Se o condomínio foi excluído, limpamos a seleção para não quebrar a tela
-    if (tenantIdSelecionado != null && !_condominios.any((c) => c['id'] == tenantIdSelecionado)) {
-      tenantIdSelecionado = null;
-    }
-    // =========================================================================
+  void _abrirModal() {
+    _nomeController.clear();
+    _cpfController.clear();
+    _senhaController.clear();
+    _tipoSelecionado = 'Zelador';
+    _nivelSelecionado = 'usuario';
 
     showDialog(
       context: context,
-      builder: (ctx) {
+      barrierDismissible: false,
+      builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             return AlertDialog(
-              title: Text(usuario == null ? 'Novo Usuário' : 'Editar Usuário'),
+              title: const Text('INCLUIR USUÁRIO', style: TextStyle(fontWeight: FontWeight.bold)),
               content: SizedBox(
-                width: 400,
+                width: 500,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextField(controller: nomeController, decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())),
-                      const SizedBox(height: 10),
-                      TextField(controller: cpfController, decoration: const InputDecoration(labelText: 'CPF', border: OutlineInputBorder())),
-                      const SizedBox(height: 10),
-                      if (usuario == null) 
-                        TextField(controller: senhaController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder())),
-                      const SizedBox(height: 10),
+                      TextField(controller: _nomeController, decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder())),
+                      const SizedBox(height: 15),
+                      TextField(controller: _cpfController, decoration: const InputDecoration(labelText: 'CPF (Apenas números)', border: OutlineInputBorder())),
+                      const SizedBox(height: 15),
+                      TextField(controller: _senhaController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha de Acesso', border: OutlineInputBorder())),
+                      const SizedBox(height: 15),
                       
                       DropdownButtonFormField<String>(
-                        value: tipoSelecionado,
-                        decoration: const InputDecoration(labelText: 'Função', border: OutlineInputBorder()),
-                        items: const [
-                          DropdownMenuItem(value: 'leiturista', child: Text('Leiturista / Zelador')),
-                          DropdownMenuItem(value: 'admin', child: Text('Administrador / Síndico')),
-                          DropdownMenuItem(value: 'master', child: Text('Master (Suporte)')),
-                        ],
-                        onChanged: (v) => setStateModal(() => tipoSelecionado = v!),
-                      ),
-                      
-                      const SizedBox(height: 15),
-                      const Text("Vincular a qual Condomínio?", style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-
-                      DropdownButtonFormField<int>(
-                        value: tenantIdSelecionado,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Selecione o Condomínio', border: OutlineInputBorder()),
-                        items: _condominios.map<DropdownMenuItem<int>>((condo) {
-                          return DropdownMenuItem<int>(value: condo['id'], child: Text(condo['nome'], overflow: TextOverflow.ellipsis));
+                        value: _tipoSelecionado,
+                        decoration: const InputDecoration(labelText: 'Cargo / Função', border: OutlineInputBorder()),
+                        items: ['Síndico', 'Zelador', 'Leiturista', 'Administrador'].map((String valor) {
+                          return DropdownMenuItem<String>(value: valor, child: Text(valor));
                         }).toList(),
-                        onChanged: (v) => setStateModal(() => tenantIdSelecionado = v),
+                        onChanged: (novo) => setStateModal(() => _tipoSelecionado = novo!),
+                      ),
+                      const SizedBox(height: 15),
+                      
+                      DropdownButtonFormField<String>(
+                        value: _nivelSelecionado,
+                        decoration: const InputDecoration(labelText: 'Nível de Acesso', border: OutlineInputBorder()),
+                        items: ['usuario', 'admin'].map((String valor) {
+                          return DropdownMenuItem<String>(value: valor, child: Text(valor.toUpperCase()));
+                        }).toList(),
+                        onChanged: (novo) => setStateModal(() => _nivelSelecionado = novo!),
                       ),
                     ],
                   ),
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (tenantIdSelecionado == null && tipoSelecionado != 'master') {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um condomínio!')));
-                       return;
-                    }
-                    final dados = {
-                      'nome': nomeController.text, 'cpf': cpfController.text, 'tipo': tipoSelecionado, 'tenant_id': tenantIdSelecionado, 
-                    };
-                    try {
-                      if (usuario == null) {
-                        dados['senha'] = senhaController.text;
-                        await _apiService.criarUsuario(dados);
-                      } else {
-                        await _apiService.editarUsuario(usuario['id'], dados);
-                      }
-                      if (mounted) {
-                        Navigator.pop(ctx);
-                        _carregarDados();
-                      }
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-                    }
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    // Aqui entra a lógica de salvar na API (Post)
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Função de salvar em construção na API.'), backgroundColor: Colors.orange));
                   },
-                  child: const Text('SALVAR'),
+                  icon: const Icon(Icons.save, color: Colors.white),
+                  label: const Text('SALVAR', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 ),
               ],
             );
-          },
+          }
         );
-      },
+      }
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Gestão de Equipe', style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)), backgroundColor: Colors.blue[800], foregroundColor: Colors.white),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _abrirModalUsuario(),
-                        icon: const Icon(Icons.person_add),
-                        label: const Text("NOVO USUÁRIO"),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: _usuarios.length,
-                      itemBuilder: (context, index) {
-                        final u = _usuarios[index];
-                        final condo = _condominios.firstWhere((c) => c['id'] == u['tenant_id'], orElse: () => {'nome': 'Não vinculado'});
-                        return Card(
-                          elevation: 2,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            leading: CircleAvatar(backgroundColor: Colors.blue[100], child: Text(u['nome'].substring(0, 1).toUpperCase())),
-                            title: Text(u['nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('${u['tipo'].toString().toUpperCase()} - CPF: ${u['cpf']}'),
-                                Text('Condomínio: ${condo['nome']}', style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _abrirModalUsuario(usuario: u)),
-                                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _excluirUsuario(u['id'])),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+    bool podeEditar = (_usuarioLogado?['nivel_acesso'] == 'master' || _usuarioLogado?['nivel_acesso'] == 'admin');
+
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+          children: [
+            Text('USUÁRIOS / EQUIPE', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+            if (podeEditar)
+              ElevatedButton.icon(
+                onPressed: _abrirModal, 
+                icon: const Icon(Icons.person_add, color: Colors.white), 
+                label: const Text('INCLUIR USUÁRIO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
               ),
-            ),
+          ]
+        ),
+        const SizedBox(height: 20),
+        
+        Expanded(
+          child: _isLoading 
+            ? const Center(child: CircularProgressIndicator()) 
+            : ListView.builder(
+                itemCount: _usuarios.length, 
+                itemBuilder: (ctx, index) {
+                  final u = _usuarios[index];
+                  bool isMaster = (u['nivel_acesso']?.toString().toLowerCase() == 'master');
+                  
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isMaster ? Colors.red[900] : Colors.blue[100],
+                        child: Icon(isMaster ? Icons.admin_panel_settings : Icons.person, color: isMaster ? Colors.white : Colors.blue[900]),
+                      ),
+                      title: Text(u['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text('Cargo: ${u['tipo'] ?? '-'} | Nível: ${u['nivel_acesso']?.toString().toUpperCase() ?? '-'}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (podeEditar)
+                            IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () {}),
+                          // SÓ MOSTRA A LIXEIRA SE NÃO FOR MASTER
+                          if (podeEditar && !isMaster)
+                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmarExclusao(u)),
+                          // SE FOR MASTER, MOSTRA UM CADEADO
+                          if (isMaster)
+                            const Tooltip(message: "Usuário Protegido", child: Padding(padding: EdgeInsets.all(8.0), child: Icon(Icons.lock, color: Colors.grey))),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              )
+        ),
+      ]
     );
   }
 }
