@@ -48,7 +48,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   Future<void> _carregarDados() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Descobrir quem está logado
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('usuario_dados');
       if (userString != null) {
@@ -58,18 +57,15 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
       bool isMaster = _verificarSeMaster();
       int tenantId = _usuarioLogado?['tenant_id'] ?? 1;
 
-      // 2. Busca a lista de Condomínios (Para o Master poder escolher no cadastro)
+      // Busca a lista de Condomínios 
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
 
-      // 3. Buscar usuários no backend
-      // Se for Master, busca TODOS. Se for Síndico, busca só os do condomínio dele.
+      // Buscar usuários usando a rota correta do adminController
       String rotaUsuarios = isMaster 
-          ? '$baseUrl/api/usuarios' 
-          : '$baseUrl/api/usuarios?tenant_id=$tenantId';
-
-      print("Buscando usuários na rota: $rotaUsuarios");
+          ? '$baseUrl/api/admin/usuarios' 
+          : '$baseUrl/api/admin/usuarios?tenant_id=$tenantId';
 
       final response = await http.get(Uri.parse(rotaUsuarios));
 
@@ -88,11 +84,58 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     }
   }
 
-  // Função auxiliar para mostrar de qual condomínio é o usuário
   String _getNomeCondominio(int? tenantId) {
     if (tenantId == null) return 'Acesso Global / Master';
     final condo = _condominios.firstWhere((c) => c['id'] == tenantId, orElse: () => null);
     return condo != null ? condo['nome'] : 'Condomínio Desconhecido';
+  }
+
+  // --- NOVA FUNÇÃO REAL DE SALVAR NO BANCO ---
+  Future<void> _salvarUsuario() async {
+    bool isMaster = _verificarSeMaster();
+    int? tenantParaSalvar = isMaster ? _condominioSelecionado : _usuarioLogado?['tenant_id'];
+
+    if (tenantParaSalvar == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione um Condomínio!'), backgroundColor: Colors.red));
+      return;
+    }
+
+    if (_nomeController.text.isEmpty || _cpfController.text.isEmpty || _senhaController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos!'), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    Navigator.pop(context); // Fecha o modal
+
+    try {
+      final body = {
+        'nome': _nomeController.text,
+        'cpf': _cpfController.text.replaceAll(RegExp(r'[^0-9]'), ''), 
+        'senha': _senhaController.text, 
+        'tipo': _tipoSelecionado,
+        'nivel_acesso': _nivelSelecionado,
+        'tenant_id': tenantParaSalvar
+      };
+
+      // Rota correta apontando para api/admin/usuario
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/usuario'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: Colors.green));
+        _carregarDados(); 
+      } else {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: ${response.body}'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro de conexão: $e'), backgroundColor: Colors.red));
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _excluirUsuario(Map<String, dynamic> usuario) async {
@@ -105,7 +148,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     }
 
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/api/usuarios/${usuario['id']}'));
+      final response = await http.delete(Uri.parse('$baseUrl/api/admin/usuario/${usuario['id']}'));
       if (response.statusCode == 200 || response.statusCode == 204) {
         _carregarDados();
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
@@ -152,8 +195,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     _nivelSelecionado = 'usuario';
     
     bool isMaster = _verificarSeMaster();
-    
-    // Se for Master, começa vazio obrigando a escolher. Se for Síndico, já crava o condomínio dele.
     _condominioSelecionado = isMaster ? null : _usuarioLogado?['tenant_id'];
 
     showDialog(
@@ -170,7 +211,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Se for MASTER, mostra o dropdown para ele escolher o Condomínio do novo usuário
                       if (isMaster) ...[
                         DropdownButtonFormField<int>(
                           value: _condominioSelecionado,
@@ -218,15 +258,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    if (isMaster && _condominioSelecionado == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione um Condomínio!'), backgroundColor: Colors.red));
-                      return;
-                    }
-
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Função de salvar em construção na API.'), backgroundColor: Colors.orange));
-                  },
+                  onPressed: _salvarUsuario, 
                   icon: const Icon(Icons.save, color: Colors.white),
                   label: const Text('SALVAR', style: TextStyle(color: Colors.white)),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
