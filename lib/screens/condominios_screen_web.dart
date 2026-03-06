@@ -46,7 +46,8 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       String? nivel;
       if (widget.usuarioLogado != null) {
         userId = widget.usuarioLogado!['id'];
-        nivel = widget.usuarioLogado!['nivel'];
+        // CORREÇÃO AQUI: Pegando o nome correto da coluna do banco de dados (nivel_acesso)
+        nivel = widget.usuarioLogado!['nivel_acesso'] ?? widget.usuarioLogado!['nivel'];
       }
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
       setState(() {
@@ -106,7 +107,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   }
 
   void _abrirModal({Map<String, dynamic>? item}) {
-    // Limpa ou preenche os campos dependendo se é inclusão ou edição
     if (item != null) {
       _nomeController.text = item['nome'] ?? '';
       _cnpjController.text = item['cnpj'] ?? '';
@@ -118,7 +118,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       _diaCorteController.text = (item['dia_corte'] ?? 1).toString();
       _telefoneCondoController.text = item['telefone_condominio'] ?? '';
       _emailCondoController.text = item['email_condominio'] ?? '';
-      // Se houver lógica separada de rua, bairro, extraia do banco ou ajuste no backend
     } else {
       _nomeController.clear(); _cnpjController.clear(); _enderecoController.clear();
       _numeroController.clear(); _complementoController.clear(); _bairroController.clear();
@@ -238,7 +237,9 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    bool podeEditar = (widget.usuarioLogado == null || widget.usuarioLogado!['nivel'] == 'master');
+    // CORREÇÃO AQUI: Validando tanto 'nivel_acesso' quanto 'nivel' para garantir que o Master veja os botões!
+    String nivelUsuario = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
+    bool podeEditar = (widget.usuarioLogado == null || nivelUsuario.toLowerCase() == 'master');
 
     return Column(
       children: [
