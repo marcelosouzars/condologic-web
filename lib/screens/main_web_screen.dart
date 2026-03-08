@@ -9,8 +9,9 @@ import 'condominios_screen_web.dart';
 import 'usuarios_screen_web.dart';
 import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
-import 'exportacao_screen_web.dart'; // <--- IMPORT DA NOVA TELA AQUI
+import 'exportacao_screen_web.dart';
 import 'login_screen_web.dart';
+import '../services/api_service_web.dart';
 
 class MainWebScreen extends StatefulWidget {
   const MainWebScreen({super.key});
@@ -53,6 +54,96 @@ class _MainWebScreenState extends State<MainWebScreen> {
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
 
+  // =========================================================================
+  // NOVA FUNÇÃO: MODAL PARA O PRÓPRIO USUÁRIO ALTERAR SUA SENHA
+  // =========================================================================
+  void _abrirModalAlterarSenha() {
+    final senhaAtualCtrl = TextEditingController();
+    final novaSenhaCtrl = TextEditingController();
+    final confirmaSenhaCtrl = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Row(
+              children: [
+                Icon(Icons.lock_reset, color: Colors.blue),
+                SizedBox(width: 10),
+                Text("Alterar Minha Senha"),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Sua nova senha deve ser mantida em segurança.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: senhaAtualCtrl, 
+                    obscureText: true, 
+                    decoration: const InputDecoration(labelText: "Senha Atual (Ex: 123456)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: novaSenhaCtrl, 
+                    obscureText: true, 
+                    decoration: const InputDecoration(labelText: "Nova Senha", border: OutlineInputBorder(), prefixIcon: Icon(Icons.key))
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: confirmaSenhaCtrl, 
+                    obscureText: true, 
+                    decoration: const InputDecoration(labelText: "Confirmar Nova Senha", border: OutlineInputBorder(), prefixIcon: Icon(Icons.key_off))
+                  ),
+                ]
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
+              ElevatedButton.icon(
+                onPressed: isSaving ? null : () async {
+                  // VALIDAÇÕES
+                  if (senhaAtualCtrl.text.isEmpty || novaSenhaCtrl.text.isEmpty || confirmaSenhaCtrl.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos!"), backgroundColor: Colors.red));
+                    return;
+                  }
+                  if (novaSenhaCtrl.text != confirmaSenhaCtrl.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A confirmação não bate com a nova senha!"), backgroundColor: Colors.red));
+                    return;
+                  }
+
+                  setStateModal(() => isSaving = true);
+                  
+                  try {
+                    // Chama a API para trocar a senha
+                    await ApiServiceWeb().alterarSenha(_usuarioLogado!['id'], senhaAtualCtrl.text, novaSenhaCtrl.text);
+                    
+                    if (mounted) {
+                      Navigator.pop(context); // Fecha o modal
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sua senha foi atualizada com sucesso!"), backgroundColor: Colors.green));
+                    }
+                  } catch (e) {
+                    setStateModal(() => isSaving = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+                  }
+                },
+                icon: isSaving ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
+                label: Text(isSaving ? "SALVANDO..." : "ATUALIZAR SENHA", style: const TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+              )
+            ]
+          );
+        }
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -92,7 +183,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const UsuariosScreenWeb(), 
       LeiturasScreenWeb(tenantId: tenantIdAtual),
       const RelatoriosScreenWeb(),
-      const ExportacaoScreenWeb(), // <--- SUBSTITUÍDO AQUI: A TELA NOVA ESTÁ DESBLOQUEADA!
+      const ExportacaoScreenWeb(), 
     ];
 
     return Scaffold(
@@ -104,14 +195,19 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
+          // AQUI O BALÃO DO USUÁRIO VIROU UM BOTÃO CLICÁVEL (ActionChip)
           Center(
-            child: Chip(
-              avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-              label: Text(
-                "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
-                style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
+            child: Tooltip(
+              message: "Clique para alterar sua senha",
+              child: ActionChip(
+                avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
+                label: Text(
+                  "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
+                  style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
+                ),
+                backgroundColor: Colors.white,
+                onPressed: _abrirModalAlterarSenha,
               ),
-              backgroundColor: Colors.white,
             ),
           ),
           const SizedBox(width: 15),

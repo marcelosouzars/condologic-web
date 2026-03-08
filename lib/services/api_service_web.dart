@@ -16,6 +16,7 @@ class ApiServiceWeb {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'cpf': cpfLimpo, 'senha': password}),
       );
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -24,6 +25,25 @@ class ApiServiceWeb {
       }
     } catch (e) {
       throw Exception('Erro de conexão: $e');
+    }
+  }
+
+  // --- ALTERAR SENHA (NOVO) ---
+  Future<void> alterarSenha(int userId, String senhaAtual, String novaSenha) async {
+    final url = Uri.parse('$baseUrl/auth/alterar-senha');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'id': userId,
+        'senha_atual': senhaAtual,
+        'nova_senha': novaSenha
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro ao alterar a senha.');
     }
   }
 
@@ -182,7 +202,6 @@ class ApiServiceWeb {
     if (dtInicio != null && dtFim != null) queryUrl += '&data_inicio=$dtInicio&data_fim=$dtFim';
     else if (mes != null && ano != null) queryUrl += '&mes=$mes&ano=$ano';
     if (blocoId != null) queryUrl += '&bloco_id=$blocoId';
-
     final response = await http.get(Uri.parse(queryUrl));
     return jsonDecode(response.body);
   }
@@ -204,7 +223,6 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
 
-  // --- BUSCAR MEDIDORES ESPECÍFICOS DE UMA UNIDADE (NOVO) ---
   Future<List<dynamic>> getMedidoresUnidade(int tenantId, int unidadeId) async {
     final response = await http.get(Uri.parse('$baseUrl/dashboard/unidades?tenant_id=$tenantId'));
     if (response.statusCode == 200) {
