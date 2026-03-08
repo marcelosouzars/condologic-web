@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data'; // <--- IMPORTANTE: Adicionado para tratar o arquivo como binário!
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:csv/csv.dart';
@@ -245,10 +246,13 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     // Usando Ponto e Vírgula (;) para o Excel do Brasil organizar as colunas automaticamente
     String csv = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
     
-    // Assinatura UTF-8 BOM: Força o Excel a exibir os acentos (ç, ã, á) perfeitamente!
-    final bytes = [239, 187, 191] + utf8.encode(csv);
+    // Converte a string CSV em lista de bytes
+    final bytes = utf8.encode(csv);
+    // Adiciona o BOM UTF-8 (Assinatura que avisa o Excel para usar acentos corretamente)
+    final bytesComBOM = [239, 187, 191, ...bytes];
     
-    final blob = html.Blob([bytes]);
+    // O PULO DO GATO: Converter a lista de inteiros num Uint8List (Arquivo binário)
+    final blob = html.Blob([Uint8List.fromList(bytesComBOM)]);
     final url = html.Url.createObjectUrlFromBlob(blob);
     final anchor = html.AnchorElement(href: url)
       ..setAttribute("download", "Relatorio_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.csv")
