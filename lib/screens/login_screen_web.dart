@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'main_web_screen.dart';
-import '../services/api_service_web.dart'; // Ajuste o caminho se necessário
+import '../services/api_service_web.dart';
 
 class LoginScreenWeb extends StatefulWidget {
   const LoginScreenWeb({super.key});
@@ -36,6 +36,39 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
       // Chama o backend real lá no Render/Neon
       final user = await _apiService.login(cpfDigitado, senhaDigitada);
       
+      // ====================================================================
+      // TRAVA DE SEGURANÇA: BLOQUEIA LEITURISTAS E ZELADORES NO PAINEL WEB
+      // ====================================================================
+      String nivelAcesso = user['nivel_acesso']?.toString().toLowerCase() ?? user['nivel']?.toString().toLowerCase() ?? 'usuario';
+      
+      if (nivelAcesso != 'admin' && nivelAcesso != 'master') {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.block, color: Colors.red),
+                  SizedBox(width: 10),
+                  Text("Acesso Negado"),
+                ],
+              ),
+              content: const Text("Seu perfil de usuário não tem permissão para acessar o Painel Web.\n\nPor favor, utilize o Aplicativo Mobile (Celular) para realizar suas tarefas de leitura."),
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                  child: const Text("ENTENDI", style: TextStyle(color: Colors.white)),
+                )
+              ],
+            )
+          );
+        }
+        return; // Interrompe o login aqui, não deixa prosseguir!
+      }
+      // ====================================================================
+
       // Salva os dados na memória do navegador para o sistema saber quem está logado
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('usuario_dados', jsonEncode(user));
