@@ -7,8 +7,9 @@ import 'dart:convert';
 
 import 'condominios_screen_web.dart';
 import 'usuarios_screen_web.dart';
-import 'leituras_screen_web.dart';   
+import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
+import 'exportacao_screen_web.dart'; // <--- IMPORT DA NOVA TELA AQUI
 import 'login_screen_web.dart';
 
 class MainWebScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   Future<void> _carregarUsuario() async {
     final prefs = await SharedPreferences.getInstance();
     final userString = prefs.getString('usuario_dados');
-    
+
     if (userString != null) {
       setState(() {
         _usuarioLogado = jsonDecode(userString);
@@ -46,7 +47,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
 
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); 
+    await prefs.clear();
+
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
@@ -54,7 +56,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
+
     int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
     
     List<NavigationRailDestination> menuItens = [
@@ -84,19 +86,18 @@ class _MainWebScreenState extends State<MainWebScreen> {
         label: Text('Exportar Dados'),
       ),
     ];
-    
+
     List<Widget> telas = [
       CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
       const UsuariosScreenWeb(), 
       LeiturasScreenWeb(tenantId: tenantIdAtual),
       const RelatoriosScreenWeb(),
-      const RelatoriosScreenWeb(), // Provisório até recriarmos a tela de exportação
+      const ExportacaoScreenWeb(), // <--- SUBSTITUÍDO AQUI: A TELA NOVA ESTÁ DESBLOQUEADA!
     ];
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
-        // TEXTO EM BRANCO NO FUNDO AZUL
         title: Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
         centerTitle: false,
         backgroundColor: Colors.blue[900], 
@@ -114,7 +115,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
             ),
           ),
           const SizedBox(width: 15),
-          // BOTÃO SAIR EM BRANCO E BEM CLARO
           TextButton.icon(
             onPressed: _logout, 
             icon: const Icon(Icons.exit_to_app, color: Colors.white), 
