@@ -212,23 +212,42 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       return;
     }
 
+    // Pega o nome do condomínio selecionado
+    final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condomínio'})['nome'];
+
     List<List<dynamic>> rows = [];
-    rows.add(["Data", "Bloco", "Unidade", "Medidor", "Leitura Anterior", "Leitura Atual", "Consumo Estimado"]);
+    
+    // CABEÇALHO COMPLETO PARA O EXCEL (Tabelas Dinâmicas)
+    rows.add([
+      "Condomínio", 
+      "Data", 
+      "Bloco", 
+      "Unidade", 
+      "Medidor", 
+      "Leitura anterior", 
+      "Leitura atual", 
+      "Consumo médio"
+    ]);
 
     for (var row in _leiturasFiltradas) {
       rows.add([
-        row['data_formatada'],
-        row['bloco'],
-        row['unidade'],
+        nomeCond, // Repete o condomínio para Excel conseguir filtrar/agrupar perfeitamente
+        row['data_formatada'] ?? '-',
+        row['bloco'] ?? '-',
+        row['unidade'] ?? '-',
         row['tipo_medidor'].toString().toUpperCase(),
-        "0", // Futuramente: Cálculo real
-        row['valor_lido'],
-        "0"  // Futuramente: Cálculo real
+        "0", // Futuramente: Cálculo real da Leitura Anterior vindo do banco
+        row['valor_lido'] ?? '0',
+        "0"  // Futuramente: Cálculo real do Consumo Médio
       ]);
     }
 
-    String csv = const ListToCsvConverter().convert(rows);
-    final bytes = utf8.encode(csv);
+    // Usando Ponto e Vírgula (;) para o Excel do Brasil organizar as colunas automaticamente
+    String csv = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
+    
+    // Assinatura UTF-8 BOM: Força o Excel a exibir os acentos (ç, ã, á) perfeitamente!
+    final bytes = [239, 187, 191] + utf8.encode(csv);
+    
     final blob = html.Blob([bytes]);
     final url = html.Url.createObjectUrlFromBlob(blob);
     final anchor = html.AnchorElement(href: url)
