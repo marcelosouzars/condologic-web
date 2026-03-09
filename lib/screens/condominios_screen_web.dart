@@ -8,6 +8,7 @@ import 'detalhe_condominio_web.dart';
 class CondominiosScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
   const CondominiosScreenWeb({super.key, this.usuarioLogado});
+  
   @override
   State<CondominiosScreenWeb> createState() => _CondominiosScreenWebState();
 }
@@ -20,7 +21,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   // Controllers do Formulário
   final _nomeController = TextEditingController();
   final _cnpjController = TextEditingController();
-  final _precoAguaController = TextEditingController(); 
+  final _precoAguaController = TextEditingController();
   final _precoGasController = TextEditingController();
   final _diaCorteController = TextEditingController();
   final _enderecoController = TextEditingController(); 
@@ -46,7 +47,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       String? nivel;
       if (widget.usuarioLogado != null) {
         userId = widget.usuarioLogado!['id'];
-        // CORREÇÃO AQUI: Pegando o nome correto da coluna do banco de dados (nivel_acesso)
         nivel = widget.usuarioLogado!['nivel_acesso'] ?? widget.usuarioLogado!['nivel'];
       }
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
@@ -59,9 +59,14 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
     }
   }
 
+  // >>> AQUI ESTÁ A CORREÇÃO DA EXCLUSÃO EM CASCATA <<<
   Future<void> _excluir(int id) async {
     try {
-      await _apiService.excluirCondominio(id, widget.user['nivel_acesso']);
+      // Pega o nível de acesso usando o nome correto da variável (usuarioLogado)
+      String nivelAcesso = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
+      
+      await _apiService.excluirCondominio(id, nivelAcesso);
+      
       _carregarDados();
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Condomínio Excluído com sucesso.'), backgroundColor: Colors.green));
     } catch(e) {
@@ -237,7 +242,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    // CORREÇÃO AQUI: Validando tanto 'nivel_acesso' quanto 'nivel' para garantir que o Master veja os botões!
     String nivelUsuario = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
     bool podeEditar = (widget.usuarioLogado == null || nivelUsuario.toLowerCase() == 'master');
 
