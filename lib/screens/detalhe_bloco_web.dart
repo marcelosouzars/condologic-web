@@ -26,8 +26,10 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   // --- CONTROLADADORES DO GERADOR INTELIGENTE ---
   final _qtdeAndaresController = TextEditingController(text: "13"); 
   final _aptosPorAndarController = TextEditingController(text: "12"); 
+  final _sufixoInicialController = TextEditingController(text: "1"); // <--- NOVO CONTROLE AQUI
+  
   String _padraoNumeracao = 'por_andar'; 
-  int _andarInicial = 1; // 0 = Térreo, 1 = 1º Andar
+  int _andarInicial = 1; 
   
   // --- CHECKBOXES DE MEDIDORES ---
   bool _temAguaFria = true; 
@@ -46,9 +48,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
       final unidadesRaw = await _apiService.getUnidadesPorBloco(widget.bloco['id']);
       List<dynamic> unidadesOrdenadas = List.from(unidadesRaw);
 
-      // >>> MÁGICA DA ORDENAÇÃO NATURAL CRESCENTE <<<
-      // Essa função ensina o sistema a ordenar números de forma humana (1, 2, 3... 10, 11)
-      // mesmo quando eles estão misturados com textos (Ex: T01, COB-01).
+      // Mágica da Ordenação Natural Crescente
       unidadesOrdenadas.sort((a, b) {
         String padNumbers(String input) {
           return input.replaceAllMapped(RegExp(r'\d+'), (Match m) => m[0]!.padLeft(10, '0'));
@@ -69,8 +69,8 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   // MODO 1: GERADOR INTELIGENTE
   // ======================================================
   Future<void> _executarGeracaoInteligente() async {
-    if (_qtdeAndaresController.text.isEmpty || _aptosPorAndarController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha a quantidade de andares e apartamentos.')));
+    if (_qtdeAndaresController.text.isEmpty || _aptosPorAndarController.text.isEmpty || _sufixoInicialController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os andares, apartamentos e o sufixo inicial.')));
       return;
     }
     
@@ -89,6 +89,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         'andar_inicial': _andarInicial,
         'qtde_andares': int.parse(_qtdeAndaresController.text),
         'aptos_por_andar': int.parse(_aptosPorAndarController.text),
+        'sufixo_inicial': int.parse(_sufixoInicialController.text), // <--- ENVIANDO PARA O BANCO
         'criar_medidores': medidores
       });
 
@@ -159,7 +160,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                   ],
                 ),
                 content: SizedBox(
-                  width: 600,
+                  width: 700, // Aumentei um pouquinho para caber a nova coluna confortavelmente
                   height: 500,
                   child: Column(
                     children: [
@@ -206,7 +207,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                                     ),
                                     const SizedBox(height: 20),
 
-                                    const Text("3. Regra de Numeração", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                                    const Text("3. Regras de Numeração", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                                     const SizedBox(height: 10),
                                     Row(
                                       children: [
@@ -215,11 +216,20 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                                             value: _andarInicial,
                                             decoration: const InputDecoration(labelText: 'Inicia em qual andar?', border: OutlineInputBorder()),
                                             items: const [
-                                              DropdownMenuItem(value: 0, child: Text("Térreo (Inicia no Térreo)")),
-                                              DropdownMenuItem(value: 1, child: Text("1º Andar (Inicia no 1º)")),
-                                              DropdownMenuItem(value: 2, child: Text("2º Andar (Inicia no 2º)")),
+                                              DropdownMenuItem(value: 0, child: Text("Térreo")),
+                                              DropdownMenuItem(value: 1, child: Text("1º Andar")),
+                                              DropdownMenuItem(value: 2, child: Text("2º Andar")),
                                             ],
                                             onChanged: (v) => setStateModal(() => _andarInicial = v!),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 15),
+                                        // >>> O NOVO CAMPO AQUI <<<
+                                        Expanded(
+                                          child: TextField(
+                                            controller: _sufixoInicialController,
+                                            keyboardType: TextInputType.number,
+                                            decoration: const InputDecoration(labelText: 'Sufixo Inicial (Ex: 1)', border: OutlineInputBorder()),
                                           ),
                                         ),
                                         const SizedBox(width: 15),
@@ -228,8 +238,8 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                                             value: _padraoNumeracao,
                                             decoration: const InputDecoration(labelText: 'Padrão dos Números', border: OutlineInputBorder()),
                                             items: const [
-                                              DropdownMenuItem(value: 'por_andar', child: Text("Por Andar (101, 102 / 201...)")),
-                                              DropdownMenuItem(value: 'continuo', child: Text("Contínuo (1, 2, 3, 4...)")),
+                                              DropdownMenuItem(value: 'por_andar', child: Text("Por Andar (101/201)")),
+                                              DropdownMenuItem(value: 'continuo', child: Text("Contínuo (1, 2, 3...)")),
                                             ],
                                             onChanged: (v) => setStateModal(() => _padraoNumeracao = v!),
                                           ),
@@ -318,7 +328,6 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // --- CARTÃO DE AÇÃO SUPERIOR ---
             Row(
               children: [
                 Expanded(
@@ -351,7 +360,6 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
             const Divider(),
             const SizedBox(height: 10),
 
-            // --- GRID DE UNIDADES ---
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
