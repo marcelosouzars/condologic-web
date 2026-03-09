@@ -24,8 +24,8 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   final _andarManualController = TextEditingController();
 
   // --- CONTROLADADORES DO GERADOR INTELIGENTE ---
-  final _qtdeAndaresController = TextEditingController(text: "13"); // Sugestão baseada no Life Park
-  final _aptosPorAndarController = TextEditingController(text: "12"); // Sugestão baseada no Life Park
+  final _qtdeAndaresController = TextEditingController(text: "13"); 
+  final _aptosPorAndarController = TextEditingController(text: "12"); 
   String _padraoNumeracao = 'por_andar'; 
   int _andarInicial = 1; // 0 = Térreo, 1 = 1º Andar
   
@@ -43,9 +43,21 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   Future<void> _carregarUnidades() async {
     setState(() => _isLoading = true);
     try {
-      final unidades = await _apiService.getUnidadesPorBloco(widget.bloco['id']);
+      final unidadesRaw = await _apiService.getUnidadesPorBloco(widget.bloco['id']);
+      List<dynamic> unidadesOrdenadas = List.from(unidadesRaw);
+
+      // >>> MÁGICA DA ORDENAÇÃO NATURAL CRESCENTE <<<
+      // Essa função ensina o sistema a ordenar números de forma humana (1, 2, 3... 10, 11)
+      // mesmo quando eles estão misturados com textos (Ex: T01, COB-01).
+      unidadesOrdenadas.sort((a, b) {
+        String padNumbers(String input) {
+          return input.replaceAllMapped(RegExp(r'\d+'), (Match m) => m[0]!.padLeft(10, '0'));
+        }
+        return padNumbers(a['identificacao'].toString()).compareTo(padNumbers(b['identificacao'].toString()));
+      });
+
       setState(() {
-        _unidades = unidades;
+        _unidades = unidadesOrdenadas;
         _isLoading = false;
       });
     } catch (e) {
