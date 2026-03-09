@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiServiceWeb {
-  // APONTAMENTO OFICIAL PARA O RENDER
   static const String baseUrl = 'https://condologic-backend.onrender.com/api';
 
   // --- LOGIN ---
@@ -71,9 +70,13 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao editar');
   }
 
-  Future<void> excluirCondominio(int id) async {
-    final response = await http.delete(Uri.parse('$baseUrl/admin/condominio/$id'));
-    if (response.statusCode != 200) throw Exception('Erro ao excluir');
+  // >>> NOVO: ENVIANDO O NÍVEL DE ACESSO PARA PERMITIR EXCLUSÃO EM CASCATA <<<
+  Future<void> excluirCondominio(int id, String nivelAcesso) async {
+    final response = await http.delete(Uri.parse('$baseUrl/admin/condominio/$id?nivel=$nivelAcesso'));
+    if (response.statusCode != 200) {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro ao excluir');
+    }
   }
 
   // --- EQUIPE E VÍNCULOS ---
@@ -158,7 +161,6 @@ class ApiServiceWeb {
     await http.post(Uri.parse('$baseUrl/admin/unidades/lote'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
   }
 
-  // >>> NOVO: GERADOR INTELIGENTE DE UNIDADES <<<
   Future<void> gerarUnidadesInteligente(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/unidades/gerador-inteligente');
     final response = await http.post(

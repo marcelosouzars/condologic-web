@@ -61,7 +61,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
   Future<void> _excluir(int id) async {
     try {
-      await _apiService.excluirCondominio(id);
+      await _apiService.excluirCondominio(id, widget.user['nivel_acesso']);
       _carregarDados();
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Condomínio Excluído com sucesso.'), backgroundColor: Colors.green));
     } catch(e) {
