@@ -1,3 +1,4 @@
+// ==========================================>>> api_service_web.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -16,7 +17,6 @@ class ApiServiceWeb {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'cpf': cpfLimpo, 'senha': password}),
       );
-
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -28,7 +28,7 @@ class ApiServiceWeb {
     }
   }
 
-  // --- ALTERAR SENHA (NOVO) ---
+  // --- ALTERAR SENHA ---
   Future<void> alterarSenha(int userId, String senhaAtual, String novaSenha) async {
     final url = Uri.parse('$baseUrl/auth/alterar-senha');
     final response = await http.post(
@@ -40,7 +40,6 @@ class ApiServiceWeb {
         'nova_senha': novaSenha
       }),
     );
-
     if (response.statusCode != 200) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao alterar a senha.');
@@ -159,7 +158,21 @@ class ApiServiceWeb {
     await http.post(Uri.parse('$baseUrl/admin/unidades/lote'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
   }
 
-  // --- USUÁRIOS (CRUD COMPLETO) ---
+  // >>> NOVO: GERADOR INTELIGENTE DE UNIDADES <<<
+  Future<void> gerarUnidadesInteligente(Map<String, dynamic> dados) async {
+    final url = Uri.parse('$baseUrl/admin/unidades/gerador-inteligente');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode != 201) {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro ao gerar unidades inteligentemente');
+    }
+  }
+
+  // --- USUÁRIOS ---
   Future<List<dynamic>> getUsuarios() async {
     final url = Uri.parse('$baseUrl/admin/usuarios');
     final response = await http.get(url);
@@ -196,12 +209,13 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao excluir usuário');
   }
 
-  // --- LEITURAS (CRUD) ---
+  // --- LEITURAS ---
   Future<List<dynamic>> getLeituras(int tenantId, {int? mes, int? ano, String? dtInicio, String? dtFim, int? blocoId}) async {
     String queryUrl = '$baseUrl/leitura/listar?tenant_id=$tenantId';
     if (dtInicio != null && dtFim != null) queryUrl += '&data_inicio=$dtInicio&data_fim=$dtFim';
     else if (mes != null && ano != null) queryUrl += '&mes=$mes&ano=$ano';
     if (blocoId != null) queryUrl += '&bloco_id=$blocoId';
+    
     final response = await http.get(Uri.parse(queryUrl));
     return jsonDecode(response.body);
   }
