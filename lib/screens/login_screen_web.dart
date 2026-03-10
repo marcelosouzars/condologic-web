@@ -98,63 +98,87 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[50], // Fundo levemente azulado para combinar
-      body: Center(
-        child: Card(
-          elevation: 5,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          child: Container(
-            width: 400,
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.apartment, size: 60, color: Colors.blue[900]),
-                const SizedBox(height: 10),
-                const Text("CONDOLOGIC", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const Text("PAINEL DE ADMINISTRAÇÃO", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 30),
-                
-                TextField(
-                  controller: _cpfController, 
-                  decoration: const InputDecoration(
-                    labelText: "CPF (Apenas números)",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 15),
-                
-                TextField(
-                  controller: _passController, 
-                  obscureText: true, 
-                  decoration: const InputDecoration(
-                    labelText: "Senha",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock),
-                  )
-                ),
-                const SizedBox(height: 30),
-                
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login, 
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[900],
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _isLoading 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                        : const Text("ENTRAR NO PAINEL", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                )
-              ],
+      body: Stack(
+        children: [
+          // IMAGEM DE FUNDO
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/background_web.png',
+              fit: BoxFit.cover,
             ),
           ),
-        ),
+          
+          // PELÍCULA ESCURA DE CONTRASTE
+          Positioned.fill(
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(Color(0x80000000), BlendMode.srcOver),
+              child: const SizedBox(),
+            ),
+          ),
+
+          // SEU CONTEÚDO ORIGINAL DE LOGIN CENTRALIZADO
+          Center(
+            child: Card(
+              elevation: 5,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Container(
+                width: 400,
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/logo_condologic.png', 
+                      height: 80, 
+                      errorBuilder: (c, e, s) => Icon(Icons.apartment, size: 80, color: Colors.blue[900])
+                    ),
+                    const SizedBox(height: 10),
+                    const Text("CONDOLOGIC", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                    const Text("PAINEL DE ADMINISTRAÇÃO", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 30),
+                    
+                    TextField(
+                      controller: _cpfController, 
+                      decoration: const InputDecoration(
+                        labelText: "CPF (Apenas números)",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    TextField(
+                      controller: _passController, 
+                      obscureText: true, 
+                      decoration: const InputDecoration(
+                        labelText: "Senha",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock),
+                      )
+                    ),
+                    const SizedBox(height: 30),
+                    
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _login, 
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[900],
+                          foregroundColor: Colors.white,
+                        ),
+                        child: _isLoading 
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                            : const Text("ENTRAR NO PAINEL", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
