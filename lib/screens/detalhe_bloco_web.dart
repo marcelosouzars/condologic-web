@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service_web.dart';
-import 'detalhe_unidade_web.dart'; 
+import 'detalhe_unidade_web.dart';
 
 class DetalheBlocoWeb extends StatefulWidget {
   final Map<String, dynamic> bloco;
@@ -24,12 +24,12 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   final _andarManualController = TextEditingController();
 
   // --- CONTROLADADORES DO GERADOR INTELIGENTE ---
-  final _qtdeAndaresController = TextEditingController(text: "13"); 
+  final _qtdeAndaresController = TextEditingController(text: "12");
   final _aptosPorAndarController = TextEditingController(text: "12"); 
-  final _sufixoInicialController = TextEditingController(text: "1"); // <--- NOVO CONTROLE AQUI
+  final _sufixoInicialController = TextEditingController(text: "1");
+  final _andarInicialController = TextEditingController(text: "2"); // <--- AGORA É UM CAMPO LIVRE
   
   String _padraoNumeracao = 'por_andar'; 
-  int _andarInicial = 1; 
   
   // --- CHECKBOXES DE MEDIDORES ---
   bool _temAguaFria = true; 
@@ -47,7 +47,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     try {
       final unidadesRaw = await _apiService.getUnidadesPorBloco(widget.bloco['id']);
       List<dynamic> unidadesOrdenadas = List.from(unidadesRaw);
-
+      
       // Mágica da Ordenação Natural Crescente
       unidadesOrdenadas.sort((a, b) {
         String padNumbers(String input) {
@@ -69,13 +69,16 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   // MODO 1: GERADOR INTELIGENTE
   // ======================================================
   Future<void> _executarGeracaoInteligente() async {
-    if (_qtdeAndaresController.text.isEmpty || _aptosPorAndarController.text.isEmpty || _sufixoInicialController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os andares, apartamentos e o sufixo inicial.')));
+    if (_qtdeAndaresController.text.isEmpty || 
+        _aptosPorAndarController.text.isEmpty || 
+        _sufixoInicialController.text.isEmpty || 
+        _andarInicialController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os andares, apartamentos, andar inicial e o sufixo.')));
       return;
     }
     
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.white)));
-    
+
     try {
       List<String> medidores = [];
       if (_temAguaFria) medidores.add('agua_fria');
@@ -86,10 +89,10 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         'tenant_id': widget.condominio['id'],
         'bloco_id': widget.bloco['id'],
         'padrao_numeracao': _padraoNumeracao,
-        'andar_inicial': _andarInicial,
+        'andar_inicial': int.parse(_andarInicialController.text), // <--- AGORA PEGA DO CAMPO DE TEXTO
         'qtde_andares': int.parse(_qtdeAndaresController.text),
         'aptos_por_andar': int.parse(_aptosPorAndarController.text),
-        'sufixo_inicial': int.parse(_sufixoInicialController.text), // <--- ENVIANDO PARA O BANCO
+        'sufixo_inicial': int.parse(_sufixoInicialController.text), 
         'criar_medidores': medidores
       });
 
@@ -112,6 +115,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   // ======================================================
   Future<void> _salvarUnidadeManual() async {
     if (_identificacaoManualController.text.isEmpty) return;
+
     try {
       List<String> medidores = [];
       if (_temAguaFria) medidores.add('agua_fria');
@@ -141,7 +145,9 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   void _abrirModalCriacao() {
     _identificacaoManualController.clear();
     _andarManualController.clear();
-    _temAguaFria = true; _temGas = true; _temAguaQuente = true;
+    _temAguaFria = true; 
+    _temGas = true; 
+    _temAguaQuente = true;
 
     showDialog(
       context: context,
@@ -160,7 +166,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                   ],
                 ),
                 content: SizedBox(
-                  width: 700, // Aumentei um pouquinho para caber a nova coluna confortavelmente
+                  width: 700, 
                   height: 500,
                   child: Column(
                     children: [
@@ -173,6 +179,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                           Tab(icon: Icon(Icons.person), text: "Criação Manual (Avulsa)"),
                         ],
                       ),
+                      
                       Expanded(
                         child: TabBarView(
                           children: [
@@ -200,7 +207,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                                     const SizedBox(height: 10),
                                     Row(
                                       children: [
-                                        Expanded(child: TextField(controller: _qtdeAndaresController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtde. de Andares (Ex: 13)', border: OutlineInputBorder()))),
+                                        Expanded(child: TextField(controller: _qtdeAndaresController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtde. de Andares com Aptos (Ex: 12)', border: OutlineInputBorder()))),
                                         const SizedBox(width: 15),
                                         Expanded(child: TextField(controller: _aptosPorAndarController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Aptos por Andar (Ex: 12)', border: OutlineInputBorder()))),
                                       ],
@@ -212,19 +219,13 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: DropdownButtonFormField<int>(
-                                            value: _andarInicial,
-                                            decoration: const InputDecoration(labelText: 'Inicia em qual andar?', border: OutlineInputBorder()),
-                                            items: const [
-                                              DropdownMenuItem(value: 0, child: Text("Térreo")),
-                                              DropdownMenuItem(value: 1, child: Text("1º Andar")),
-                                              DropdownMenuItem(value: 2, child: Text("2º Andar")),
-                                            ],
-                                            onChanged: (v) => setStateModal(() => _andarInicial = v!),
+                                          child: TextField(
+                                            controller: _andarInicialController,
+                                            keyboardType: TextInputType.number,
+                                            decoration: const InputDecoration(labelText: 'Inicia em qual andar? (Ex: 2)', border: OutlineInputBorder()),
                                           ),
                                         ),
                                         const SizedBox(width: 15),
-                                        // >>> O NOVO CAMPO AQUI <<<
                                         Expanded(
                                           child: TextField(
                                             controller: _sufixoInicialController,
