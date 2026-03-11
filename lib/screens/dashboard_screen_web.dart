@@ -30,7 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Row(
         children: [
           // ===============================================
-          // MENU LATERAL (SIDEBAR) - DESIGN AZUL (O QUE VOCÊ GOSTA)
+          // MENU LATERAL (SIDEBAR) - DESIGN AZUL
           // ===============================================
           Container(
             width: 260,
@@ -84,7 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   _buildMenuItem(
                     icon: Icons.people, 
-                    label: 'Usuários & Equipe', // <--- Nome Ajustado
+                    label: 'Usuários & Equipe', 
                     id: 'usuarios',
                     isActive: _telaAtual == 'usuarios'
                   ),
@@ -147,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Expanded(
             child: Column(
               children: [
-                // Barra Superior (Header) - Mantive do código branco pois é útil
+                // Barra Superior (Header)
                 Container(
                   height: 60,
                   color: Colors.white,
@@ -240,7 +240,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Conteúdo Central (Lógica do Switch Case)
+  // Conteúdo Central (Lógica do Switch Case) - ERRO CORRIGIDO AQUI
   Widget _buildConteudoCentral() {
     switch (_telaAtual) {
       case 'inicio':
@@ -259,16 +259,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       
       case 'condominios':
-        return const CondominiosScreenWeb();
+        return CondominiosScreenWeb();
       
       case 'usuarios': 
-        return const UsuariosScreenWeb();
+        return UsuariosScreenWeb();
 
       case 'leituras': 
-        return const LeiturasScreenWeb();
+        return LeiturasScreenWeb();
 
       case 'relatorios':
-        return const RelatoriosScreenWeb();
+        return RelatoriosScreenWeb();
 
       case 'unidades':
         return const Center(child: Text("Gestão de Unidades (Visão Síndico)"));
