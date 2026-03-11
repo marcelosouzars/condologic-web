@@ -1,6 +1,7 @@
+// ==========================================>>> detalhe_condominio_web.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/api_service_web.dart';
+import '../services/api_service_web.dart'; 
 import 'detalhe_bloco_web.dart';
 
 class DetalheCondominioWeb extends StatefulWidget {
@@ -18,19 +19,18 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
   List<dynamic> _blocos = [];
   bool _isLoading = true;
   
-  // Controllers para o Bloco Simples (Modo Manual)
+  // Controllers do Gerador Inteligente
   final _nomeBlocoController = TextEditingController();
-
-  // Controllers para a MÁQUINA DE ESTRUTURA (Wizard Automático)
-  final _nomeBlocoWizardController = TextEditingController();
-  final _qtdAndaresController = TextEditingController();
-  final _qtdAptosController = TextEditingController();
-  final _inicioNumeracaoController = TextEditingController(text: "1"); // Padrão começa no 1 (ex: 101)
+  final _qtdeAndaresController = TextEditingController(text: "12");
+  final _aptosPorAndarController = TextEditingController(text: "4"); 
+  final _sufixoInicialController = TextEditingController(text: "1");
+  final _andarInicialController = TextEditingController(text: "1");
   
-  // Checkboxes
-  bool _temAgua = true;
-  bool _temGas = false;
-  bool _temAguaQuente = false; // <<< NOVO
+  String _padraoNumeracao = 'por_andar';
+  bool _temAguaFria = true; 
+  bool _temGas = true;
+  bool _temAguaQuente = true;
+  bool _gerarUnidades = true; // Permite criar o bloco vazio se desmarcado
 
   @override
   void initState() {
@@ -51,194 +51,183 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     }
   }
 
-  // --- MODO 1: CRIAR BLOCO VAZIO (Simples) ---
-  Future<void> _salvarBlocoSimples() async {
-    if (_nomeBlocoController.text.isEmpty) return;
+  Future<void> _salvarBloco() async {
+    if (_nomeBlocoController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe o nome do bloco.')));
+      return;
+    }
+
+    if (_gerarUnidades && (_qtdeAndaresController.text.isEmpty || _aptosPorAndarController.text.isEmpty || _sufixoInicialController.text.isEmpty || _andarInicialController.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha as regras de numeração e andares.')));
+      return;
+    }
+
+    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.white)));
+    
     try {
-      await _apiService.criarBloco(widget.condominio['id'], _nomeBlocoController.text);
-      if (mounted) {
-        Navigator.pop(context);
-        _nomeBlocoController.clear();
-        _carregarBlocos();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bloco criado com sucesso!'), backgroundColor: Colors.green));
+      // 1. Cria o bloco e recebe o ID dele de volta
+      int blocoId = await _apiService.criarBloco(widget.condominio['id'], _nomeBlocoController.text);
+
+      // 2. Se for para gerar a estrutura inteligente junto
+      if (_gerarUnidades) {
+        List<String> medidores = [];
+        if (_temAguaFria) medidores.add('agua_fria');
+        if (_temGas) medidores.add('gas');
+        if (_temAguaQuente) medidores.add('agua_quente');
+
+        await _apiService.gerarUnidadesInteligente({
+          'tenant_id': widget.condominio['id'],
+          'bloco_id': blocoId,
+          'padrao_numeracao': _padraoNumeracao,
+          'andar_inicial': int.parse(_andarInicialController.text),
+          'qtde_andares': int.parse(_qtdeAndaresController.text),
+          'aptos_por_andar': int.parse(_aptosPorAndarController.text),
+          'sufixo_inicial': int.parse(_sufixoInicialController.text), 
+          'criar_medidores': medidores
+        });
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
-    }
-  }
 
-  // --- MODO 2: A MÁQUINA DE ESTRUTURA (Complexo) ---
-  Future<void> _executarWizard() async {
-    if (_nomeBlocoWizardController.text.isEmpty || _qtdAndaresController.text.isEmpty || _qtdAptosController.text.isEmpty) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos do Wizard!')));
-       return;
-    }
-
-    Navigator.pop(context); 
-    setState(() => _isLoading = true);
-
-    try {
-      List<String> medidores = [];
-      if (_temAgua) medidores.add('agua_fria');
-      if (_temGas) medidores.add('gas');
-      if (_temAguaQuente) medidores.add('agua_quente'); // <<<
-
-      await _apiService.gerarEstruturaCompleta({
-        'tenant_id': widget.condominio['id'],
-        'nome_bloco': _nomeBlocoWizardController.text,
-        'qtde_andares': int.parse(_qtdAndaresController.text),
-        'unidades_por_andar': int.parse(_qtdAptosController.text),
-        'inicio_numeracao': int.tryParse(_inicioNumeracaoController.text) ?? 1, // <<<
-        'criar_medidores': medidores
-      });
-
-      _nomeBlocoWizardController.clear();
-      _qtdAndaresController.clear();
-      _qtdAptosController.clear();
-      _inicioNumeracaoController.text = "1";
-      
-      await _carregarBlocos();
-      
-      if(mounted) {
+      if (mounted) {
+        Navigator.pop(context); // Fecha loading
+        Navigator.pop(context); // Fecha modal
+        _nomeBlocoController.clear();
+        _carregarBlocos(); 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('SUCESSO! O Bloco e todas as unidades foram gerados automaticamente.'), 
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          )
+          const SnackBar(content: Text('Bloco e estrutura criados com sucesso!'), backgroundColor: Colors.green),
         );
       }
-
     } catch (e) {
-      setState(() => _isLoading = false);
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao gerar estrutura: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        Navigator.pop(context); // Fecha loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
-  void _abrirModalCriacao() {
-    _nomeBlocoController.text = "";
-    _nomeBlocoWizardController.text = "";
-    _qtdAndaresController.text = "";
-    _qtdAptosController.text = "";
-    _inicioNumeracaoController.text = "1";
-    _temAgua = true;
-    _temGas = false;
-    _temAguaQuente = false;
+  void _abrirModalBloco() {
+    // Reset defaults ao abrir
+    _nomeBlocoController.clear();
+    _qtdeAndaresController.text = "12";
+    _aptosPorAndarController.text = "4";
+    _sufixoInicialController.text = "1";
+    _andarInicialController.text = "1";
+    _padraoNumeracao = 'por_andar';
+    _temAguaFria = true;
+    _temGas = true;
+    _temAguaQuente = true;
+    _gerarUnidades = true;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateModal) {
-            return DefaultTabController(
-              length: 2,
-              child: AlertDialog(
-                title: const Text('Adicionar Nova Estrutura'),
-                content: SizedBox(
-                  width: 600, // Aumentei um pouco a largura
-                  height: 500,
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Row(
+                children: [
+                  Icon(Icons.domain_add, color: Colors.blue[800]),
+                  const SizedBox(width: 10),
+                  const Text('Criar Bloco / Torre'),
+                ],
+              ),
+              content: SizedBox(
+                width: 700,
+                child: SingleChildScrollView(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const TabBar(
-                        labelColor: Colors.blue,
-                        unselectedLabelColor: Colors.grey,
-                        tabs: [
-                          Tab(icon: Icon(Icons.flash_on), text: "Automático (Wizard)"),
-                          Tab(icon: Icon(Icons.crop_square), text: "Bloco Vazio"),
-                        ],
+                      const Text("1. Identificação", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _nomeBlocoController,
+                        decoration: const InputDecoration(labelText: 'Nome do Bloco (Ex: Torre A)', border: OutlineInputBorder()),
                       ),
-                      Expanded(
-                        child: TabBarView(
+                      
+                      const SizedBox(height: 20),
+                      const Divider(),
+                      const SizedBox(height: 10),
+
+                      SwitchListTile(
+                        title: const Text("Criar unidades automaticamente agora?", style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text("O Gerador Inteligente fará o trabalho pesado por você."),
+                        value: _gerarUnidades,
+                        activeColor: Colors.blue[800],
+                        onChanged: (val) => setStateModal(() => _gerarUnidades = val),
+                      ),
+
+                      if (_gerarUnidades) ...[
+                        const SizedBox(height: 15),
+                        const Text("2. Selecione os Medidores de cada Apartamento", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                        Row(
                           children: [
-                            // --- ABA 1: WIZARD (AUTOMÁTICO) ---
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      color: Colors.blue[50],
-                                      child: const Text("Cria o Bloco, Andares e Apartamentos de uma só vez.", style: TextStyle(fontSize: 12, color: Colors.black87)),
-                                    ),
-                                    const SizedBox(height: 15),
-                                    TextField(
-                                      controller: _nomeBlocoWizardController,
-                                      decoration: const InputDecoration(labelText: 'Nome do Bloco (Ex: Torre A)', border: OutlineInputBorder(), isDense: true),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(child: TextField(controller: _qtdAndaresController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtd Andares', hintText: 'Ex: 13', border: OutlineInputBorder(), isDense: true))),
-                                        const SizedBox(width: 10),
-                                        Expanded(child: TextField(controller: _qtdAptosController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Aptos/Andar', hintText: 'Ex: 4', border: OutlineInputBorder(), isDense: true))),
-                                        const SizedBox(width: 10),
-                                        // CAMPO NOVO: NUMERO INICIAL
-                                        Expanded(child: TextField(controller: _inicioNumeracaoController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Início (Sufixo)', hintText: 'Ex: 1 (gera 101)', border: OutlineInputBorder(), isDense: true))),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 5),
-                                    const Text("Ex: Se 'Início' for 1, gera 101, 102... Se for 5, gera 105, 106...", style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                    
-                                    const SizedBox(height: 15),
-                                    const Text("Quais medidores instalar em todas as unidades?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                    Row(
-                                      children: [
-                                        Checkbox(value: _temAgua, onChanged: (v) => setStateModal(() => _temAgua = v!)),
-                                        const Text("Água Fria"),
-                                        const SizedBox(width: 10),
-                                        Checkbox(value: _temAguaQuente, onChanged: (v) => setStateModal(() => _temAguaQuente = v!)),
-                                        const Text("Água Quente"),
-                                        const SizedBox(width: 10),
-                                        Checkbox(value: _temGas, onChanged: (v) => setStateModal(() => _temGas = v!)),
-                                        const Text("Gás"),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 20),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: _executarWizard,
-                                        icon: const Icon(Icons.auto_awesome, color: Colors.white),
-                                        label: const Text('GERAR ESTRUTURA COMPLETA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], padding: const EdgeInsets.symmetric(vertical: 18)),
-                                      ),
-                                    )
-                                  ],
-                                ),
+                            Expanded(child: CheckboxListTile(title: const Text("Água Fria"), value: _temAguaFria, onChanged: (v) => setStateModal(() => _temAguaFria = v!))),
+                            Expanded(child: CheckboxListTile(title: const Text("Gás"), value: _temGas, onChanged: (v) => setStateModal(() => _temGas = v!))),
+                            Expanded(child: CheckboxListTile(title: const Text("Quente"), value: _temAguaQuente, onChanged: (v) => setStateModal(() => _temAguaQuente = v!))),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 15),
+                        const Text("3. Estrutura do Prédio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(child: TextField(controller: _qtdeAndaresController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtde. de Andares (Ex: 12)', border: OutlineInputBorder()))),
+                            const SizedBox(width: 15),
+                            Expanded(child: TextField(controller: _aptosPorAndarController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Aptos por Andar (Ex: 4)', border: OutlineInputBorder()))),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 15),
+                        const Text("4. Regras de Numeração", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _andarInicialController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'Inicia em qual andar? (Ex: 1)', border: OutlineInputBorder()),
                               ),
                             ),
-
-                            // --- ABA 2: SIMPLES (BLOCO VAZIO) ---
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.architecture, size: 50, color: Colors.grey),
-                                  const SizedBox(height: 20),
-                                  const Text("Cria apenas o nome do bloco.\nVocê terá que adicionar as unidades manualmente depois.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                                  const SizedBox(height: 20),
-                                  TextField(
-                                    controller: _nomeBlocoController,
-                                    decoration: const InputDecoration(labelText: 'Nome do Bloco', border: OutlineInputBorder()),
-                                  ),
-                                  const SizedBox(height: 20),
-                                  ElevatedButton(
-                                    onPressed: _salvarBlocoSimples,
-                                    child: const Text('CRIAR BLOCO VAZIO'),
-                                  )
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: TextField(
+                                controller: _sufixoInicialController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'Sufixo Inicial (Ex: 1)', border: OutlineInputBorder()),
+                              ),
+                            ),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: _padraoNumeracao,
+                                decoration: const InputDecoration(labelText: 'Padrão dos Números', border: OutlineInputBorder()),
+                                items: const [
+                                  DropdownMenuItem(value: 'por_andar', child: Text("Por Andar (101/201)")),
+                                  DropdownMenuItem(value: 'continuo', child: Text("Contínuo (1, 2, 3...)")),
                                 ],
+                                onChanged: (v) => setStateModal(() => _padraoNumeracao = v!),
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
               ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
+                ElevatedButton.icon(
+                  onPressed: _salvarBloco,
+                  icon: const Icon(Icons.domain, color: Colors.white),
+                  label: Text(_gerarUnidades ? "GERAR PRÉDIO COMPLETO" : "SALVAR BLOCO VAZIO", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+                ),
+              ],
             );
           },
         );
@@ -260,6 +249,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Cabeçalho da Página
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -268,15 +258,16 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                   style: GoogleFonts.montserrat(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[800]),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _abrirModalCriacao,
+                  onPressed: _abrirModalBloco,
                   icon: const Icon(Icons.add_business, color: Colors.white),
-                  label: const Text('ADICIONAR BLOCO', style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], padding: const EdgeInsets.all(16)),
+                  label: const Text('ADICIONAR NOVO BLOCO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
                 ),
               ],
             ),
             const SizedBox(height: 20),
 
+            // Lista de Blocos
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -287,16 +278,14 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                             children: [
                               Icon(Icons.domain_disabled, size: 60, color: Colors.grey[400]),
                               const SizedBox(height: 10),
-                              const Text('Nenhum bloco cadastrado.'),
-                              const SizedBox(height: 5),
-                              const Text('Clique em ADICIONAR BLOCO para começar.', style: TextStyle(color: Colors.blue)),
+                              const Text('Nenhum bloco cadastrado neste condomínio.'),
                             ],
                           ),
                         )
                       : GridView.builder(
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 220,
-                            childAspectRatio: 1.4,
+                            childAspectRatio: 3 / 2,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
@@ -304,10 +293,9 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                           itemBuilder: (context, index) {
                             final bloco = _blocos[index];
                             return Card(
-                              elevation: 3,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -317,30 +305,20 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                                         condominio: widget.condominio
                                       ),
                                     ),
-                                  ).then((_) => _carregarBlocos());
+                                  );
                                 },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 25,
-                                        backgroundColor: Colors.blue[50],
-                                        child: Icon(Icons.apartment, size: 30, color: Colors.blue[800]),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        bloco['nome'],
-                                        style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, fontSize: 16),
-                                        textAlign: TextAlign.center,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 5),
-                                      const Text('Gerenciar Unidades', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                                    ],
-                                  ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.apartment, size: 40, color: Colors.blue[800]),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      bloco['nome'],
+                                      style: GoogleFonts.montserrat(fontWeight: FontWeight.bold, fontSize: 18),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    const Text('Clique para gerenciar', style: TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline)),
+                                  ],
                                 ),
                               ),
                             );

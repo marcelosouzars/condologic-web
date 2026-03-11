@@ -19,19 +19,10 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   List<dynamic> _unidades = [];
   bool _isLoading = true;
 
-  // --- CONTROLADOR DA CRIAÇÃO MANUAL ---
+  // --- CONTROLADOR DA CRIAÇÃO MANUAL AVULSA ---
   final _identificacaoManualController = TextEditingController();
   final _andarManualController = TextEditingController();
 
-  // --- CONTROLADADORES DO GERADOR INTELIGENTE ---
-  final _qtdeAndaresController = TextEditingController(text: "12");
-  final _aptosPorAndarController = TextEditingController(text: "12"); 
-  final _sufixoInicialController = TextEditingController(text: "1");
-  final _andarInicialController = TextEditingController(text: "2"); // <--- AGORA É UM CAMPO LIVRE
-  
-  String _padraoNumeracao = 'por_andar'; 
-  
-  // --- CHECKBOXES DE MEDIDORES ---
   bool _temAguaFria = true; 
   bool _temGas = true;
   bool _temAguaQuente = true;
@@ -66,56 +57,10 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   }
 
   // ======================================================
-  // MODO 1: GERADOR INTELIGENTE
-  // ======================================================
-  Future<void> _executarGeracaoInteligente() async {
-    if (_qtdeAndaresController.text.isEmpty || 
-        _aptosPorAndarController.text.isEmpty || 
-        _sufixoInicialController.text.isEmpty || 
-        _andarInicialController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os andares, apartamentos, andar inicial e o sufixo.')));
-      return;
-    }
-    
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.white)));
-
-    try {
-      List<String> medidores = [];
-      if (_temAguaFria) medidores.add('agua_fria');
-      if (_temGas) medidores.add('gas');
-      if (_temAguaQuente) medidores.add('agua_quente');
-
-      await _apiService.gerarUnidadesInteligente({
-        'tenant_id': widget.condominio['id'],
-        'bloco_id': widget.bloco['id'],
-        'padrao_numeracao': _padraoNumeracao,
-        'andar_inicial': int.parse(_andarInicialController.text), // <--- AGORA PEGA DO CAMPO DE TEXTO
-        'qtde_andares': int.parse(_qtdeAndaresController.text),
-        'aptos_por_andar': int.parse(_aptosPorAndarController.text),
-        'sufixo_inicial': int.parse(_sufixoInicialController.text), 
-        'criar_medidores': medidores
-      });
-
-      if (mounted) {
-        Navigator.pop(context); // Fecha loading
-        Navigator.pop(context); // Fecha modal
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Toda a estrutura foi gerada com sucesso!'), backgroundColor: Colors.green));
-        _carregarUnidades();
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  // ======================================================
-  // MODO 2: CRIAÇÃO MANUAL AVULSA
+  // CRIAÇÃO MANUAL AVULSA
   // ======================================================
   Future<void> _salvarUnidadeManual() async {
     if (_identificacaoManualController.text.isEmpty) return;
-
     try {
       List<String> medidores = [];
       if (_temAguaFria) medidores.add('agua_fria');
@@ -141,7 +86,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     }
   }
 
-  // --- MODAL DE CRIAÇÃO ---
+  // --- MODAL DE CRIAÇÃO AVULSA ---
   void _abrirModalCriacao() {
     _identificacaoManualController.clear();
     _andarManualController.clear();
@@ -154,161 +99,47 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateModal) {
-            return DefaultTabController(
-              length: 2,
-              child: AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                title: Row(
-                  children: [
-                    Icon(Icons.auto_awesome, color: Colors.blue[900]),
-                    const SizedBox(width: 10),
-                    const Text('Criar Unidades'),
-                  ],
-                ),
-                content: SizedBox(
-                  width: 700, 
-                  height: 500,
-                  child: Column(
-                    children: [
-                      TabBar(
-                        labelColor: Colors.blue[900],
-                        unselectedLabelColor: Colors.grey,
-                        indicatorColor: Colors.blue[900],
-                        tabs: const [
-                          Tab(icon: Icon(Icons.flash_on), text: "Gerador Inteligente"),
-                          Tab(icon: Icon(Icons.person), text: "Criação Manual (Avulsa)"),
-                        ],
-                      ),
-                      
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            // ============================================
-                            // ABA 1: GERADOR INTELIGENTE
-                            // ============================================
-                            Padding(
-                              padding: const EdgeInsets.only(top: 20),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text("1. Selecione os Medidores de cada Apartamento", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                    Row(
-                                      children: [
-                                        Expanded(child: CheckboxListTile(title: const Text("Água Fria"), value: _temAguaFria, onChanged: (v) => setStateModal(() => _temAguaFria = v!))),
-                                        Expanded(child: CheckboxListTile(title: const Text("Gás"), value: _temGas, onChanged: (v) => setStateModal(() => _temGas = v!))),
-                                        Expanded(child: CheckboxListTile(title: const Text("Quente"), value: _temAguaQuente, onChanged: (v) => setStateModal(() => _temAguaQuente = v!))),
-                                      ],
-                                    ),
-                                    const Divider(),
-                                    const SizedBox(height: 10),
-
-                                    const Text("2. Estrutura do Prédio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(child: TextField(controller: _qtdeAndaresController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtde. de Andares com Aptos (Ex: 12)', border: OutlineInputBorder()))),
-                                        const SizedBox(width: 15),
-                                        Expanded(child: TextField(controller: _aptosPorAndarController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Aptos por Andar (Ex: 12)', border: OutlineInputBorder()))),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 20),
-
-                                    const Text("3. Regras de Numeração", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextField(
-                                            controller: _andarInicialController,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'Inicia em qual andar? (Ex: 2)', border: OutlineInputBorder()),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 15),
-                                        Expanded(
-                                          child: TextField(
-                                            controller: _sufixoInicialController,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'Sufixo Inicial (Ex: 1)', border: OutlineInputBorder()),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 15),
-                                        Expanded(
-                                          child: DropdownButtonFormField<String>(
-                                            value: _padraoNumeracao,
-                                            decoration: const InputDecoration(labelText: 'Padrão dos Números', border: OutlineInputBorder()),
-                                            items: const [
-                                              DropdownMenuItem(value: 'por_andar', child: Text("Por Andar (101/201)")),
-                                              DropdownMenuItem(value: 'continuo', child: Text("Contínuo (1, 2, 3...)")),
-                                            ],
-                                            onChanged: (v) => setStateModal(() => _padraoNumeracao = v!),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 30),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      height: 50,
-                                      child: ElevatedButton.icon(
-                                        onPressed: _executarGeracaoInteligente,
-                                        icon: const Icon(Icons.build, color: Colors.white),
-                                        label: const Text("GERAR PRÉDIO COMPLETO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
-                                      ),
-                                    )
-                                  ],
-                                ),
-                              ),
-                            ),
-                            
-                            // ============================================
-                            // ABA 2: CRIAÇÃO MANUAL AVULSA
-                            // ============================================
-                            Padding(
-                              padding: const EdgeInsets.only(top: 20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Para adicionar unidades fora do padrão (Ex: Casa de Máquinas, Cobertura).", style: TextStyle(color: Colors.grey)),
-                                  const SizedBox(height: 20),
-                                  TextField(controller: _identificacaoManualController, decoration: const InputDecoration(labelText: 'Identificação (Ex: COB-01)', border: OutlineInputBorder())),
-                                  const SizedBox(height: 15),
-                                  TextField(controller: _andarManualController, decoration: const InputDecoration(labelText: 'Andar (Ex: Cobertura)', border: OutlineInputBorder())),
-                                  const SizedBox(height: 15),
-                                  const Text("Medidores:", style: TextStyle(fontWeight: FontWeight.bold)),
-                                  Row(
-                                    children: [
-                                      Expanded(child: CheckboxListTile(title: const Text("Água Fria", style: TextStyle(fontSize: 12)), value: _temAguaFria, onChanged: (v) => setStateModal(() => _temAguaFria = v!))),
-                                      Expanded(child: CheckboxListTile(title: const Text("Gás", style: TextStyle(fontSize: 12)), value: _temGas, onChanged: (v) => setStateModal(() => _temGas = v!))),
-                                      Expanded(child: CheckboxListTile(title: const Text("Quente", style: TextStyle(fontSize: 12)), value: _temAguaQuente, onChanged: (v) => setStateModal(() => _temAguaQuente = v!))),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 50,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _salvarUnidadeManual, 
-                                      icon: const Icon(Icons.add, color: Colors.white),
-                                      label: const Text("ADICIONAR UNIDADE", style: TextStyle(color: Colors.white)),
-                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800]),
-                                    ),
-                                  )
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("FECHAR", style: TextStyle(color: Colors.grey))),
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Row(
+                children: [
+                  Icon(Icons.add_home, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  const Text('Adicionar Unidade Avulsa'),
                 ],
               ),
+              content: SizedBox(
+                width: 400, 
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Utilize para adicionar unidades fora do padrão gerado (Ex: Casa de Máquinas, Cobertura, Sala do Síndico).", style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 20),
+                    TextField(controller: _identificacaoManualController, decoration: const InputDecoration(labelText: 'Identificação (Ex: COB-01)', border: OutlineInputBorder())),
+                    const SizedBox(height: 15),
+                    TextField(controller: _andarManualController, decoration: const InputDecoration(labelText: 'Andar (Ex: Cobertura)', border: OutlineInputBorder())),
+                    const SizedBox(height: 15),
+                    const Text("Medidores desta unidade:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Row(
+                      children: [
+                        Expanded(child: CheckboxListTile(title: const Text("Água Fria", style: TextStyle(fontSize: 12)), value: _temAguaFria, dense: true, contentPadding: EdgeInsets.zero, onChanged: (v) => setStateModal(() => _temAguaFria = v!))),
+                        Expanded(child: CheckboxListTile(title: const Text("Gás", style: TextStyle(fontSize: 12)), value: _temGas, dense: true, contentPadding: EdgeInsets.zero, onChanged: (v) => setStateModal(() => _temGas = v!))),
+                        Expanded(child: CheckboxListTile(title: const Text("Quente", style: TextStyle(fontSize: 12)), value: _temAguaQuente, dense: true, contentPadding: EdgeInsets.zero, onChanged: (v) => setStateModal(() => _temAguaQuente = v!))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
+                ElevatedButton.icon(
+                  onPressed: _salvarUnidadeManual, 
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text("ADICIONAR UNIDADE", style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800]),
+                )
+              ],
             );
           },
         );
@@ -340,13 +171,13 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_business, color: Colors.blue[800], size: 40),
+                          Icon(Icons.add_home_work, color: Colors.blue[800], size: 40),
                           const SizedBox(width: 15),
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("GERENCIAR UNIDADES", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                              Text("Criar Estrutura Inteligente ou Adição Manual", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                              Text("ADICIONAR UNIDADE AVULSA", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                              Text("Criar unidade de exceção (Casa de máquinas, etc)", style: TextStyle(color: Colors.grey, fontSize: 14)),
                             ],
                           )
                         ],
@@ -365,7 +196,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _unidades.isEmpty
-                      ? const Center(child: Text("Nenhuma unidade cadastrada. Use o botão acima para gerar a estrutura.", style: TextStyle(fontSize: 16)))
+                      ? const Center(child: Text("Nenhuma unidade encontrada neste bloco.", style: TextStyle(fontSize: 16)))
                       : GridView.builder(
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 140, 
@@ -419,4 +250,3 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     );
   }
 }
-

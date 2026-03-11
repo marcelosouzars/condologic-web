@@ -16,6 +16,7 @@ class ApiServiceWeb {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'cpf': cpfLimpo, 'senha': password}),
       );
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -39,6 +40,7 @@ class ApiServiceWeb {
         'nova_senha': novaSenha
       }),
     );
+
     if (response.statusCode != 200) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao alterar a senha.');
@@ -62,6 +64,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 201) throw Exception('Erro ao criar: ${response.body}');
   }
 
@@ -70,7 +73,6 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao editar');
   }
 
-  // >>> NOVO: ENVIANDO O NÍVEL DE ACESSO PARA PERMITIR EXCLUSÃO EM CASCATA <<<
   Future<void> excluirCondominio(int id, String nivelAcesso) async {
     final response = await http.delete(Uri.parse('$baseUrl/admin/condominio/$id?nivel=$nivelAcesso'));
     if (response.statusCode != 200) {
@@ -103,7 +105,8 @@ class ApiServiceWeb {
   }
 
   // --- BLOCOS ---
-  Future<void> criarBloco(int tenantId, String nome) async {
+  // 👇 AQUI A FUNÇÃO AGORA DEVOLVE O ID DO BLOCO CRIADO
+  Future<int> criarBloco(int tenantId, String nome) async {
     final url = Uri.parse('$baseUrl/admin/bloco');
     final response = await http.post(
       url,
@@ -113,7 +116,13 @@ class ApiServiceWeb {
         'nome': nome
       }),
     );
-    if (response.statusCode != 201) throw Exception('Erro ao criar bloco');
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['id']; 
+    } else {
+      throw Exception('Erro ao criar bloco');
+    }
   }
 
   Future<void> gerarEstruturaCompleta(Map<String, dynamic> dados) async {
@@ -123,6 +132,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao gerar estrutura');
@@ -154,6 +164,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 201) throw Exception('Erro ao criar unidade');
   }
 
@@ -168,6 +179,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao gerar unidades inteligentemente');
@@ -189,6 +201,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao criar usuário');
@@ -202,6 +215,7 @@ class ApiServiceWeb {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(dados),
     );
+
     if (response.statusCode != 200) throw Exception('Erro ao editar usuário');
   }
 
@@ -217,7 +231,7 @@ class ApiServiceWeb {
     if (dtInicio != null && dtFim != null) queryUrl += '&data_inicio=$dtInicio&data_fim=$dtFim';
     else if (mes != null && ano != null) queryUrl += '&mes=$mes&ano=$ano';
     if (blocoId != null) queryUrl += '&bloco_id=$blocoId';
-    
+
     final response = await http.get(Uri.parse(queryUrl));
     return jsonDecode(response.body);
   }
@@ -225,11 +239,13 @@ class ApiServiceWeb {
   Future<void> corrigirLeitura(int id, double novoValor, {String? novaFotoBase64}) async {
     final url = Uri.parse('$baseUrl/leitura/$id');
     final body = {'novo_valor': novoValor, if (novaFotoBase64 != null) 'nova_foto': novaFotoBase64};
+
     final response = await http.put(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
+
     if (response.statusCode != 200) throw Exception('Erro ao corrigir leitura');
   }
 
