@@ -5,7 +5,7 @@ const CACHE_NAME = 'flutter-app-cache';
 
 const RESOURCES = {"assets/AssetManifest.bin": "59449bb8bb9d2fc2d6f79ee2e323495e",
 "assets/AssetManifest.bin.json": "ee15b53392eadab1dd3e9f84b16d1525",
-"assets/assets/images/background_web.png": "93cd0b7fe7a68696f2816f9daebd8331",
+"assets/assets/images/background_web.png": "e500a4580a12818727da933f8d37442a",
 "assets/assets/images/logo_condologic.png": "e9a8056ec7d4da8d53971fd7f0142c74",
 "assets/FontManifest.json": "dc3d03800ccca4601324923c0b1d6d57",
 "assets/fonts/MaterialIcons-Regular.otf": "18fa86767acb7ee8689a666cd41f4a98",
@@ -27,7 +27,7 @@ const RESOURCES = {"assets/AssetManifest.bin": "59449bb8bb9d2fc2d6f79ee2e323495e
 "canvaskit/skwasm_heavy.wasm": "b0be7910760d205ea4e011458df6ee01",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "flutter.js": "24bc71911b75b5f8135c949e27a2984e",
-"flutter_bootstrap.js": "d2f0a64e6a1128f932ae6a65d3f8aada",
+"flutter_bootstrap.js": "259760c832e677381ec6e5dc06524348",
 "icons/Icon-192.png": "ac9a721a12bbc803b44f645561ecb1e1",
 "icons/Icon-512.png": "96e752610906ba2a93c65f8abe1645f1",
 "icons/Icon-maskable-192.png": "c457ef57daa1d16f64b27b786ec2ea3c",
