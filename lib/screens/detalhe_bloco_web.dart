@@ -26,7 +26,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   bool _temAguaFria = true; 
   bool _temGas = true;
   bool _temAguaQuente = true;
-  int _digitosVermelhos = 3; // NOVO: Padrão 3 dígitos
+  int _digitosVermelhos = 3; 
 
   @override
   void initState() {
@@ -40,7 +40,6 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
       final unidadesRaw = await _apiService.getUnidadesPorBloco(widget.bloco['id']);
       List<dynamic> unidadesOrdenadas = List.from(unidadesRaw);
       
-      // Mágica da Ordenação Natural Crescente
       unidadesOrdenadas.sort((a, b) {
         String padNumbers(String input) {
           return input.replaceAllMapped(RegExp(r'\d+'), (Match m) => m[0]!.padLeft(10, '0'));
@@ -55,6 +54,32 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     } catch (e) {
       setState(() => _isLoading = false);
     }
+  }
+
+  // --- NOVA FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
+  void _mostrarErro(String mensagem) {
+    final msgLimpa = mensagem.replaceFirst('Exception: ', '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 10),
+            Text('Atenção', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(msgLimpa, style: const TextStyle(fontSize: 16)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK, ENTENDI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ======================================================
@@ -74,7 +99,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         'identificacao': _identificacaoManualController.text,
         'andar': _andarManualController.text.isEmpty ? 'Térreo' : _andarManualController.text,
         'criar_medidores': medidores,
-        'digitos_vermelhos': _digitosVermelhos // ENVIANDO PARA O BANCO
+        'digitos_vermelhos': _digitosVermelhos 
       });
 
       if (mounted) {
@@ -84,7 +109,9 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unidade avulsa criada!'), backgroundColor: Colors.green));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+      if (mounted) {
+        _mostrarErro(e.toString()); // Chama o novo modal de erro!
+      }
     }
   }
 
@@ -152,12 +179,22 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
+                // NOVO BOTÃO DE CANCELAR MAIS VISÍVEL
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.redAccent),
+                  label: const Text("CANCELAR", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                  ),
+                ),
+                const SizedBox(width: 5),
                 ElevatedButton.icon(
                   onPressed: _salvarUnidadeManual, 
                   icon: const Icon(Icons.add, color: Colors.white),
                   label: const Text("ADICIONAR UNIDADE", style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800]),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
                 )
               ],
             );

@@ -31,7 +31,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
   bool _temGas = true;
   bool _temAguaQuente = true;
   bool _gerarUnidades = true; 
-  int _digitosVermelhos = 3; // NOVO: Padrão de 3 dígitos vermelhos
+  int _digitosVermelhos = 3; 
 
   @override
   void initState() {
@@ -52,24 +52,48 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     }
   }
 
+  // --- NOVA FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
+  void _mostrarErro(String mensagem) {
+    final msgLimpa = mensagem.replaceFirst('Exception: ', '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 10),
+            Text('Atenção', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(msgLimpa, style: const TextStyle(fontSize: 16)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK, ENTENDI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _salvarBloco() async {
     if (_nomeBlocoController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe o nome do bloco.')));
+      _mostrarErro('Informe o nome do bloco/torre.');
       return;
     }
 
     if (_gerarUnidades && (_qtdeAndaresController.text.isEmpty || _aptosPorAndarController.text.isEmpty || _sufixoInicialController.text.isEmpty || _andarInicialController.text.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha as regras de numeração e andares.')));
+      _mostrarErro('Preencha as regras de numeração e andares.');
       return;
     }
 
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.white)));
     
     try {
-      // 1. Cria o bloco e recebe o ID dele de volta
       int blocoId = await _apiService.criarBloco(widget.condominio['id'], _nomeBlocoController.text);
 
-      // 2. Se for para gerar a estrutura inteligente junto
       if (_gerarUnidades) {
         List<String> medidores = [];
         if (_temAguaFria) medidores.add('agua_fria');
@@ -85,7 +109,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
           'aptos_por_andar': int.parse(_aptosPorAndarController.text),
           'sufixo_inicial': int.parse(_sufixoInicialController.text), 
           'criar_medidores': medidores,
-          'digitos_vermelhos': _digitosVermelhos // ENVIANDO PARA O BANCO
+          'digitos_vermelhos': _digitosVermelhos 
         });
       }
 
@@ -101,13 +125,12 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Fecha loading
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+        _mostrarErro(e.toString()); // Chama o novo modal de erro!
       }
     }
   }
 
   void _abrirModalBloco() {
-    // Reset defaults ao abrir
     _nomeBlocoController.clear();
     _qtdeAndaresController.text = "12";
     _aptosPorAndarController.text = "4";
@@ -118,7 +141,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     _temGas = true;
     _temAguaQuente = true;
     _gerarUnidades = true;
-    _digitosVermelhos = 3; // Reseta para o mais comum
+    _digitosVermelhos = 3; 
 
     showDialog(
       context: context,
@@ -172,7 +195,6 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                           ],
                         ),
                         
-                        // NOVO CAMPO: DÍGITOS VERMELHOS
                         const SizedBox(height: 15),
                         DropdownButtonFormField<int>(
                           value: _digitosVermelhos,
@@ -240,12 +262,22 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
+                // NOVO BOTÃO DE CANCELAR MAIS VISÍVEL
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.redAccent),
+                  label: const Text("CANCELAR", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                  ),
+                ),
+                const SizedBox(width: 5),
                 ElevatedButton.icon(
                   onPressed: _salvarBloco,
                   icon: const Icon(Icons.domain, color: Colors.white),
                   label: Text(_gerarUnidades ? "GERAR PRÉDIO COMPLETO" : "SALVAR BLOCO VAZIO", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
                 ),
               ],
             );
