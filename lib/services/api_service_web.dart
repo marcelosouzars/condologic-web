@@ -105,7 +105,6 @@ class ApiServiceWeb {
   }
 
   // --- BLOCOS ---
-  // 👇 AQUI A FUNÇÃO AGORA DEVOLVE O ID DO BLOCO CRIADO
   Future<int> criarBloco(int tenantId, String nome) async {
     final url = Uri.parse('$baseUrl/admin/bloco');
     final response = await http.post(
@@ -157,6 +156,7 @@ class ApiServiceWeb {
     throw Exception('Erro ao listar unidades');
   }
 
+  // >>> AQUI ESTÁ A CORREÇÃO: CAPTURANDO A MENSAGEM DO BACKEND <<<
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/unidade');
     final response = await http.post(
@@ -165,7 +165,14 @@ class ApiServiceWeb {
       body: jsonEncode(dados),
     );
 
-    if (response.statusCode != 201) throw Exception('Erro ao criar unidade');
+    if (response.statusCode != 201) {
+      try {
+        final erro = jsonDecode(response.body);
+        throw Exception(erro['error'] ?? 'Erro desconhecido ao criar unidade.');
+      } catch (e) {
+        throw Exception(response.body);
+      }
+    }
   }
 
   Future<void> gerarUnidadesLote(Map<String, dynamic> dados) async {
@@ -204,7 +211,7 @@ class ApiServiceWeb {
 
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao criar usuário');
+      throw Exception(erro['error'] ?? 'Erro ao criar utilizador');
     }
   }
 
@@ -216,13 +223,13 @@ class ApiServiceWeb {
       body: jsonEncode(dados),
     );
 
-    if (response.statusCode != 200) throw Exception('Erro ao editar usuário');
+    if (response.statusCode != 200) throw Exception('Erro ao editar utilizador');
   }
 
   Future<void> excluirUsuario(int id) async {
     final url = Uri.parse('$baseUrl/admin/usuario/$id');
     final response = await http.delete(url);
-    if (response.statusCode != 200) throw Exception('Erro ao excluir usuário');
+    if (response.statusCode != 200) throw Exception('Erro ao excluir utilizador');
   }
 
   // --- LEITURAS ---
