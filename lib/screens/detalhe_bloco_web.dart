@@ -23,6 +23,9 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   final _identificacaoManualController = TextEditingController();
   final _andarManualController = TextEditingController();
 
+  // --- CONTROLADOR DA EXCLUSÃO AVULSA ---
+  final _unidadeExclusaoController = TextEditingController();
+
   bool _temAguaFria = true; 
   bool _temGas = true;
   bool _temAguaQuente = true;
@@ -56,7 +59,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     }
   }
 
-  // --- NOVA FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
+  // --- FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
   void _mostrarErro(String mensagem) {
     final msgLimpa = mensagem.replaceFirst('Exception: ', '');
     showDialog(
@@ -83,7 +86,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   }
 
   // ======================================================
-  // CRIAÇÃO MANUAL AVULSA
+  // 1. FLUXO DE CRIAÇÃO MANUAL
   // ======================================================
   Future<void> _salvarUnidadeManual() async {
     if (_identificacaoManualController.text.isEmpty) return;
@@ -110,12 +113,11 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
       }
     } catch (e) {
       if (mounted) {
-        _mostrarErro(e.toString()); // Chama o novo modal de erro!
+        _mostrarErro(e.toString());
       }
     }
   }
 
-  // --- MODAL DE CRIAÇÃO AVULSA ---
   void _abrirModalCriacao() {
     _identificacaoManualController.clear();
     _andarManualController.clear();
@@ -179,7 +181,6 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                 ),
               ),
               actions: [
-                // NOVO BOTÃO DE CANCELAR MAIS VISÍVEL
                 OutlinedButton.icon(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close, color: Colors.redAccent),
@@ -204,6 +205,104 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     );
   }
 
+  // ======================================================
+  // 2. FLUXO DE EXCLUSÃO MANUAL (DUPLA CONFIRMAÇÃO)
+  // ======================================================
+  void _abrirModalPedirUnidadeExclusao() {
+    _unidadeExclusaoController.clear();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.domain_disabled, color: Colors.red[800], size: 30),
+            const SizedBox(width: 10),
+            Text('Excluir Unidade', style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Qual a identificação/número da unidade que deseja excluir?"),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _unidadeExclusaoController,
+              decoration: const InputDecoration(labelText: 'Ex: 102, COB-01', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(ctx),
+            icon: const Icon(Icons.close, color: Colors.grey),
+            label: const Text("CANCELAR", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey, width: 1.5), padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              if (_unidadeExclusaoController.text.isNotEmpty) {
+                Navigator.pop(ctx);
+                _abrirModalConfirmacaoExclusao(_unidadeExclusaoController.text);
+              }
+            },
+            icon: const Icon(Icons.arrow_forward, color: Colors.white),
+            label: const Text("PROSSEGUIR", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[800], padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          )
+        ],
+      )
+    );
+  }
+
+  void _abrirModalConfirmacaoExclusao(String identificacao) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 10),
+            Text('Confirmação de Exclusão', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text("CONFIRMA A EXCLUSÃO DA UNIDADE '$identificacao' E SEUS MEDIDORES?", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(ctx),
+            icon: const Icon(Icons.close, color: Colors.grey),
+            label: const Text("NÃO, CANCELAR", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey, width: 1.5), padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx); // Fecha modal confirmação
+              showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+              try {
+                await _apiService.excluirUnidade(widget.bloco['id'], identificacao);
+                if (mounted) {
+                  Navigator.pop(context); // Fecha loading
+                  _carregarUnidades();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unidade excluída com sucesso!'), backgroundColor: Colors.green));
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context); // Fecha loading
+                  _mostrarErro(e.toString());
+                }
+              }
+            },
+            icon: const Icon(Icons.check, color: Colors.white),
+            label: const Text("SIM, EXCLUIR", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[800], padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          )
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -217,6 +316,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
+            // >>> AQUI ESTÃO OS DOIS BOTÕES LADO A LADO <<<
             Row(
               children: [
                 Expanded(
@@ -233,8 +333,32 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("ADICIONAR UNIDADE AVULSA", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                              Text("Criar unidade de exceção (Casa de máquinas, etc)", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                              Text("ADICIONAR UNIDADE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text("Criar unidade avulsa", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: InkWell(
+                    onTap: _abrirModalPedirUnidadeExclusao,
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.withOpacity(0.5), width: 2)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.domain_disabled, color: Colors.red[800], size: 40),
+                          const SizedBox(width: 15),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("EXCLUIR UNIDADE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
+                              Text("Remover unidade avulsa", style: TextStyle(color: Colors.grey, fontSize: 12)),
                             ],
                           )
                         ],

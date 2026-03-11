@@ -156,7 +156,6 @@ class ApiServiceWeb {
     throw Exception('Erro ao listar unidades');
   }
 
-  // >>> AQUI ESTÁ A CORREÇÃO: CAPTURANDO A MENSAGEM DO BACKEND <<<
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/unidade');
     final response = await http.post(
@@ -169,6 +168,21 @@ class ApiServiceWeb {
       try {
         final erro = jsonDecode(response.body);
         throw Exception(erro['error'] ?? 'Erro desconhecido ao criar unidade.');
+      } catch (e) {
+        throw Exception(response.body);
+      }
+    }
+  }
+
+  // >>> NOVA FUNÇÃO DE EXCLUSÃO DE UNIDADE <<<
+  Future<void> excluirUnidade(int blocoId, String identificacao) async {
+    final url = Uri.parse('$baseUrl/admin/unidade/$blocoId/$identificacao');
+    final response = await http.delete(url);
+
+    if (response.statusCode != 200) {
+      try {
+        final erro = jsonDecode(response.body);
+        throw Exception(erro['error'] ?? 'Erro desconhecido ao excluir unidade.');
       } catch (e) {
         throw Exception(response.body);
       }
@@ -211,7 +225,7 @@ class ApiServiceWeb {
 
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao criar utilizador');
+      throw Exception(erro['error'] ?? 'Erro ao criar usuário');
     }
   }
 
@@ -223,13 +237,13 @@ class ApiServiceWeb {
       body: jsonEncode(dados),
     );
 
-    if (response.statusCode != 200) throw Exception('Erro ao editar utilizador');
+    if (response.statusCode != 200) throw Exception('Erro ao editar usuário');
   }
 
   Future<void> excluirUsuario(int id) async {
     final url = Uri.parse('$baseUrl/admin/usuario/$id');
     final response = await http.delete(url);
-    if (response.statusCode != 200) throw Exception('Erro ao excluir utilizador');
+    if (response.statusCode != 200) throw Exception('Erro ao excluir usuário');
   }
 
   // --- LEITURAS ---
