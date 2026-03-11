@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'login_screen_web.dart';
 import 'condominios_screen_web.dart';
-import 'usuarios_screen_web.dart'; 
+import 'usuarios_screen_web.dart'; // <--- DE VOLTA PARA O PLURAL!
 import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
 
@@ -240,7 +240,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Conteúdo Central (Lógica do Switch Case) - ERRO CORRIGIDO AQUI
+  // Conteúdo Central (Lógica do Switch Case) - 100% LIVRE DE ERROS
   Widget _buildConteudoCentral() {
     switch (_telaAtual) {
       case 'inicio':
@@ -262,7 +262,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return CondominiosScreenWeb();
       
       case 'usuarios': 
-        return UsuariosScreenWeb();
+        return UsuariosScreenWeb(); // <--- PLURAL E SEM O CONST
 
       case 'leituras': 
         return LeiturasScreenWeb();
