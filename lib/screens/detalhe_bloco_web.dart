@@ -26,6 +26,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   bool _temAguaFria = true; 
   bool _temGas = true;
   bool _temAguaQuente = true;
+  int _digitosVermelhos = 3; // NOVO: Padrão 3 dígitos
 
   @override
   void initState() {
@@ -72,7 +73,8 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         'bloco_id': widget.bloco['id'],
         'identificacao': _identificacaoManualController.text,
         'andar': _andarManualController.text.isEmpty ? 'Térreo' : _andarManualController.text,
-        'criar_medidores': medidores
+        'criar_medidores': medidores,
+        'digitos_vermelhos': _digitosVermelhos // ENVIANDO PARA O BANCO
       });
 
       if (mounted) {
@@ -93,6 +95,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     _temAguaFria = true; 
     _temGas = true; 
     _temAguaQuente = true;
+    _digitosVermelhos = 3;
 
     showDialog(
       context: context,
@@ -119,6 +122,23 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                     TextField(controller: _identificacaoManualController, decoration: const InputDecoration(labelText: 'Identificação (Ex: COB-01)', border: OutlineInputBorder())),
                     const SizedBox(height: 15),
                     TextField(controller: _andarManualController, decoration: const InputDecoration(labelText: 'Andar (Ex: Cobertura)', border: OutlineInputBorder())),
+                    
+                    const SizedBox(height: 15),
+                    DropdownButtonFormField<int>(
+                      value: _digitosVermelhos,
+                      decoration: const InputDecoration(
+                        labelText: 'Formato do Medidor (Dígitos Vermelhos)', 
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.speed, color: Colors.red)
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 3, child: Text("3 Dígitos Vermelhos (Lê até o litro)")),
+                        DropdownMenuItem(value: 2, child: Text("2 Dígitos Vermelhos (Lê a cada 10 litros)")),
+                        DropdownMenuItem(value: 0, child: Text("Sem vermelhos (Só pretos)")),
+                      ],
+                      onChanged: (v) => setStateModal(() => _digitosVermelhos = v!),
+                    ),
+
                     const SizedBox(height: 15),
                     const Text("Medidores desta unidade:", style: TextStyle(fontWeight: FontWeight.bold)),
                     Row(

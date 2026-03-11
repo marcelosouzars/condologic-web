@@ -30,7 +30,8 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
   bool _temAguaFria = true; 
   bool _temGas = true;
   bool _temAguaQuente = true;
-  bool _gerarUnidades = true; // Permite criar o bloco vazio se desmarcado
+  bool _gerarUnidades = true; 
+  int _digitosVermelhos = 3; // NOVO: Padrão de 3 dígitos vermelhos
 
   @override
   void initState() {
@@ -83,7 +84,8 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
           'qtde_andares': int.parse(_qtdeAndaresController.text),
           'aptos_por_andar': int.parse(_aptosPorAndarController.text),
           'sufixo_inicial': int.parse(_sufixoInicialController.text), 
-          'criar_medidores': medidores
+          'criar_medidores': medidores,
+          'digitos_vermelhos': _digitosVermelhos // ENVIANDO PARA O BANCO
         });
       }
 
@@ -116,6 +118,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     _temGas = true;
     _temAguaQuente = true;
     _gerarUnidades = true;
+    _digitosVermelhos = 3; // Reseta para o mais comum
 
     showDialog(
       context: context,
@@ -169,6 +172,23 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                           ],
                         ),
                         
+                        // NOVO CAMPO: DÍGITOS VERMELHOS
+                        const SizedBox(height: 15),
+                        DropdownButtonFormField<int>(
+                          value: _digitosVermelhos,
+                          decoration: const InputDecoration(
+                            labelText: 'Formato do Medidor (Dígitos Vermelhos)', 
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.speed, color: Colors.red)
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 3, child: Text("3 Dígitos Vermelhos (Lê até o litro)")),
+                            DropdownMenuItem(value: 2, child: Text("2 Dígitos Vermelhos (Lê a cada 10 litros)")),
+                            DropdownMenuItem(value: 0, child: Text("Sem vermelhos (Apenas números inteiros pretos)")),
+                          ],
+                          onChanged: (v) => setStateModal(() => _digitosVermelhos = v!),
+                        ),
+
                         const SizedBox(height: 15),
                         const Text("3. Estrutura do Prédio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                         const SizedBox(height: 10),
@@ -249,7 +269,6 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cabeçalho da Página
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -267,7 +286,6 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
             ),
             const SizedBox(height: 20),
 
-            // Lista de Blocos
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
