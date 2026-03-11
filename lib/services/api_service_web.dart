@@ -156,6 +156,7 @@ class ApiServiceWeb {
     throw Exception('Erro ao listar unidades');
   }
 
+  // >>> AQUI ESTÁ A CORREÇÃO DE LEITURA DE ERRO <<<
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/unidade');
     final response = await http.post(
@@ -165,27 +166,31 @@ class ApiServiceWeb {
     );
 
     if (response.statusCode != 201) {
+      String msgErro = 'Erro desconhecido ao criar unidade.';
       try {
         final erro = jsonDecode(response.body);
-        throw Exception(erro['error'] ?? 'Erro desconhecido ao criar unidade.');
-      } catch (e) {
-        throw Exception(response.body);
-      }
+        if (erro is Map && erro.containsKey('error')) {
+          msgErro = erro['error'];
+        }
+      } catch (_) {}
+      throw Exception(msgErro);
     }
   }
 
-  // >>> NOVA FUNÇÃO DE EXCLUSÃO DE UNIDADE <<<
+  // >>> AQUI ESTÁ A CORREÇÃO DE LEITURA DE ERRO <<<
   Future<void> excluirUnidade(int blocoId, String identificacao) async {
     final url = Uri.parse('$baseUrl/admin/unidade/$blocoId/$identificacao');
     final response = await http.delete(url);
 
     if (response.statusCode != 200) {
+      String msgErro = 'Erro desconhecido ao excluir unidade.';
       try {
         final erro = jsonDecode(response.body);
-        throw Exception(erro['error'] ?? 'Erro desconhecido ao excluir unidade.');
-      } catch (e) {
-        throw Exception(response.body);
-      }
+        if (erro is Map && erro.containsKey('error')) {
+          msgErro = erro['error'];
+        }
+      } catch (_) {}
+      throw Exception(msgErro);
     }
   }
 
