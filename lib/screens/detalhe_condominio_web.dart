@@ -52,7 +52,6 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     }
   }
 
-  // --- NOVA FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
   void _mostrarErro(String mensagem) {
     final msgLimpa = mensagem.replaceFirst('Exception: ', '');
     showDialog(
@@ -125,7 +124,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Fecha loading
-        _mostrarErro(e.toString()); // Chama o novo modal de erro!
+        _mostrarErro(e.toString()); 
       }
     }
   }
@@ -262,7 +261,6 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                 ),
               ),
               actions: [
-                // NOVO BOTÃO DE CANCELAR MAIS VISÍVEL
                 OutlinedButton.icon(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close, color: Colors.redAccent),
@@ -347,6 +345,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               child: InkWell(
                                 onTap: () {
+                                  // >>> CORREÇÃO PARA RECARREGAR OS DADOS AO VOLTAR <<<
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -355,7 +354,7 @@ class _DetalheCondominioWebState extends State<DetalheCondominioWeb> {
                                         condominio: widget.condominio
                                       ),
                                     ),
-                                  );
+                                  ).then((_) => _carregarBlocos()); // <--- Recarrega ao voltar
                                 },
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,

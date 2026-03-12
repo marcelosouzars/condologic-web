@@ -1,3 +1,4 @@
+// ==========================================>>> api_service_web.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -123,6 +124,33 @@ class ApiServiceWeb {
     }
   }
 
+  Future<List<dynamic>> getBlocos(int tenantId) async {
+    final url = Uri.parse('$baseUrl/admin/blocos/$tenantId');
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Erro ao listar blocos');
+    }
+  }
+
+  // >>> NOVA FUNÇÃO EXCLUIR BLOCO <<<
+  Future<void> excluirBloco(int blocoId, String nivelAcesso) async {
+    final url = Uri.parse('$baseUrl/admin/bloco/$blocoId?nivel=$nivelAcesso');
+    final response = await http.delete(url);
+
+    if (response.statusCode != 200) {
+      String msgErro = 'Erro desconhecido ao excluir bloco.';
+      try {
+        final erro = jsonDecode(response.body);
+        if (erro is Map && erro.containsKey('error')) {
+          msgErro = erro['error'];
+        }
+      } catch (_) {}
+      throw Exception(msgErro);
+    }
+  }
+
   Future<void> gerarEstruturaCompleta(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/bloco/estrutura-completa');
     final response = await http.post(
@@ -134,16 +162,6 @@ class ApiServiceWeb {
     if (response.statusCode != 201) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao gerar estrutura');
-    }
-  }
-
-  Future<List<dynamic>> getBlocos(int tenantId) async {
-    final url = Uri.parse('$baseUrl/admin/blocos/$tenantId');
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Erro ao listar blocos');
     }
   }
 

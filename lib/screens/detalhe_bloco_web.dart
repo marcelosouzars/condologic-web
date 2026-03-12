@@ -1,6 +1,8 @@
 // ==========================================>>> detalhe_bloco_web.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../services/api_service_web.dart';
 import 'detalhe_unidade_web.dart';
 
@@ -18,6 +20,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   List<dynamic> _unidades = [];
   bool _isLoading = true;
+  Map<String, dynamic>? _usuarioLogado; // <<< Adicionado para controle de acesso
 
   // --- CONTROLADOR DA CRIAÇÃO MANUAL AVULSA ---
   final _identificacaoManualController = TextEditingController();
@@ -34,7 +37,19 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
   @override
   void initState() {
     super.initState();
+    _carregarUsuario();
     _carregarUnidades();
+  }
+
+  // >>> FUNÇÃO NOVA: Carregar usuário para verificar se é Master
+  Future<void> _carregarUsuario() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userString = prefs.getString('usuario_dados');
+    if (userString != null && mounted) {
+      setState(() {
+        _usuarioLogado = jsonDecode(userString);
+      });
+    }
   }
 
   Future<void> _carregarUnidades() async {
@@ -59,7 +74,6 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     }
   }
 
-  // --- FUNÇÃO DE EXIBIR ERROS NO CENTRO DA TELA ---
   void _mostrarErro(String mensagem) {
     final msgLimpa = mensagem.replaceFirst('Exception: ', '');
     showDialog(
@@ -303,8 +317,71 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
     );
   }
 
+  // ======================================================
+  // 3. FLUXO DE EXCLUSÃO DO BLOCO INTEIRO (NOVO!)
+  // ======================================================
+  void _abrirModalConfirmacaoExclusaoBloco() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.dangerous, color: Colors.red[900], size: 35),
+            const SizedBox(width: 10),
+            Text('ATENÇÃO MÁXIMA', style: TextStyle(color: Colors.red[900], fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          "VOCÊ ESTÁ PRESTES A APAGAR O BLOCO INTEIRO:\n\n"
+          "► Bloco: ${widget.bloco['nome']}\n"
+          "► Unidades vinculadas: ${_unidades.length}\n\n"
+          "Esta ação APAGARÁ DEFINITIVAMENTE todas as unidades, medidores e o histórico de leituras. NÃO pode ser desfeita.", 
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+        ),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(ctx),
+            icon: const Icon(Icons.close, color: Colors.grey),
+            label: const Text("CANCELAR", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey, width: 1.5), padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx); // Fecha modal
+              showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+              try {
+                String nivelAcesso = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'] ?? '';
+                
+                await _apiService.excluirBloco(widget.bloco['id'], nivelAcesso);
+                
+                if (mounted) {
+                  Navigator.pop(context); // Fecha loading
+                  Navigator.pop(context, true); // VOLTA PARA A TELA DE CONDOMÍNIO (Fechando o bloco)
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bloco inteiro excluído com sucesso!'), backgroundColor: Colors.green));
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context); // Fecha loading
+                  _mostrarErro(e.toString());
+                }
+              }
+            },
+            icon: const Icon(Icons.delete_sweep, color: Colors.white),
+            label: const Text("SIM, EXCLUIR BLOCO INTEIRO", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[900], padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
+          )
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // >>> VERIFICA SE O USUÁRIO É MASTER PARA EXIBIR O NOVO BOTÃO <<<
+    String nivelUsuario = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() ?? _usuarioLogado?['nivel']?.toString().toLowerCase() ?? '';
+    bool isMaster = (nivelUsuario == 'master');
+
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
@@ -316,7 +393,7 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // >>> AQUI ESTÃO OS DOIS BOTÕES LADO A LADO <<<
+            // >>> AQUI ESTÃO OS CARDS SUPERIORES <<<
             Row(
               children: [
                 Expanded(
@@ -366,6 +443,33 @@ class _DetalheBlocoWebState extends State<DetalheBlocoWeb> {
                     ),
                   ),
                 ),
+                // >>> NOVO CARD: EXCLUIR BLOCO (APENAS MASTER) <<<
+                if (isMaster) ...[
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _abrirModalConfirmacaoExclusaoBloco,
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.shade900, width: 2)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete_sweep, color: Colors.red[900], size: 40),
+                            const SizedBox(width: 15),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("EXCLUIR BLOCO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red[900])),
+                                Text("Apagar torre inteira", style: TextStyle(color: Colors.red[700], fontSize: 12)),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ]
               ],
             ),
 
