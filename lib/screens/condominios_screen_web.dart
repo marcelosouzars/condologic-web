@@ -1,3 +1,5 @@
+// ==========================================>>> condominios_screen_web.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service_web.dart';
@@ -6,7 +8,6 @@ import 'detalhe_condominio_web.dart';
 class CondominiosScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
   const CondominiosScreenWeb({super.key, this.usuarioLogado});
-  
   @override
   State<CondominiosScreenWeb> createState() => _CondominiosScreenWebState();
 }
@@ -19,10 +20,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   // Controllers do Formulário
   final _nomeController = TextEditingController();
   final _cnpjController = TextEditingController();
-  final _precoAguaController = TextEditingController();
-  final _precoAguaQuenteController = TextEditingController();
-  final _precoGasController = TextEditingController();
-  final _diaCorteController = TextEditingController();
   final _enderecoController = TextEditingController(); 
   final _numeroController = TextEditingController();
   final _complementoController = TextEditingController();
@@ -30,8 +27,19 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   final _cidadeController = TextEditingController();
   final _estadoController = TextEditingController();
   final _cepController = TextEditingController();
+  
+  // Controllers do Síndico / Contato
+  final _nomeSindicoController = TextEditingController();
+  final _telefoneSindicoController = TextEditingController();
+  final _emailSindicoController = TextEditingController();
   final _telefoneCondoController = TextEditingController();
   final _emailCondoController = TextEditingController();
+
+  // Controllers Financeiros
+  final _precoAguaController = TextEditingController(); 
+  final _precoAguaQuenteController = TextEditingController();
+  final _precoGasController = TextEditingController();
+  final _diaCorteController = TextEditingController();
 
   @override
   void initState() {
@@ -58,6 +66,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
     }
   }
 
+  // >>> CORREÇÃO APLICADA AQUI: ENVIANDO O NÍVEL DE ACESSO <<<
   Future<void> _excluir(int id) async {
     try {
       String nivelAcesso = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
@@ -84,9 +93,15 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
         'cidade': _cidadeController.text, 
         'estado': _estadoController.text, 
         'cep': _cepController.text,
+        
+        // Contatos do Condomínio / Síndico
         'telefone_condominio': _telefoneCondoController.text,
         'email_condominio': _emailCondoController.text,
-        // Converte a vírgula para ponto antes de enviar pro Banco
+        'nome_sindico': _nomeSindicoController.text,
+        'telefone_sindico': _telefoneSindicoController.text,
+        'email_sindico': _emailSindicoController.text,
+
+        // Valores convertidos de volta para Ponto (formato do Banco de Dados)
         'valor_m3_agua': double.tryParse(_precoAguaController.text.replaceAll(',', '.')) ?? 0.0,
         'valor_m3_agua_quente': double.tryParse(_precoAguaQuenteController.text.replaceAll(',', '.')) ?? 0.0,
         'valor_m3_gas': double.tryParse(_precoGasController.text.replaceAll(',', '.')) ?? 0.0,
@@ -110,6 +125,15 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
     }
   }
 
+  // FUNÇÃO BLINDADA PARA LER NÚMEROS DO BANCO E EVITAR TRAVAMENTO DE TELA
+  double _parseValor(dynamic valor) {
+    if (valor == null) return 0.0;
+    if (valor is double) return valor;
+    if (valor is int) return valor.toDouble();
+    if (valor is String) return double.tryParse(valor) ?? 0.0;
+    return 0.0;
+  }
+
   void _abrirModal({Map<String, dynamic>? item}) {
     if (item != null) {
       _nomeController.text = item['nome'] ?? '';
@@ -117,18 +141,28 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       _enderecoController.text = item['endereco'] ?? ''; 
       _cidadeController.text = item['cidade'] ?? '';
       _estadoController.text = item['estado'] ?? '';
-      // Formata de Ponto para Vírgula com 2 casas decimais na hora de exibir
-      _precoAguaController.text = (item['valor_m3_agua'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
-      _precoAguaQuenteController.text = (item['valor_m3_agua_quente'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
-      _precoGasController.text = (item['valor_m3_gas'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
-      _diaCorteController.text = (item['dia_corte'] ?? 1).toString();
       _telefoneCondoController.text = item['telefone_condominio'] ?? '';
       _emailCondoController.text = item['email_condominio'] ?? '';
+      
+      // Carregando o Síndico
+      _nomeSindicoController.text = item['nome_sindico'] ?? '';
+      _telefoneSindicoController.text = item['telefone_sindico'] ?? '';
+      _emailSindicoController.text = item['email_sindico'] ?? '';
+
+      // Carregando valores com formatação de Vírgula segura
+      _precoAguaController.text = _parseValor(item['valor_m3_agua']).toStringAsFixed(2).replaceAll('.', ',');
+      _precoAguaQuenteController.text = _parseValor(item['valor_m3_agua_quente']).toStringAsFixed(2).replaceAll('.', ',');
+      _precoGasController.text = _parseValor(item['valor_m3_gas']).toStringAsFixed(2).replaceAll('.', ',');
+      _diaCorteController.text = (item['dia_corte'] ?? 1).toString();
+      
     } else {
       _nomeController.clear(); _cnpjController.clear(); _enderecoController.clear();
       _numeroController.clear(); _complementoController.clear(); _bairroController.clear();
       _cidadeController.clear(); _estadoController.clear(); _cepController.clear();
       _telefoneCondoController.clear(); _emailCondoController.clear();
+      
+      _nomeSindicoController.clear(); _telefoneSindicoController.clear(); _emailSindicoController.clear();
+      
       _precoAguaController.text = "0,00"; 
       _precoAguaQuenteController.text = "0,00"; 
       _precoGasController.text = "0,00"; 
@@ -157,14 +191,28 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                     ]),
                     const SizedBox(height: 10),
                     Row(children: [
-                        Expanded(child: _buildTextField('Email Contato', _emailCondoController)),
+                        Expanded(child: _buildTextField('Email Condomínio', _emailCondoController)),
                         const SizedBox(width: 10),
-                        Expanded(child: _buildTextField('Telefone', _telefoneCondoController)),
+                        Expanded(child: _buildTextField('Telefone Comercial', _telefoneCondoController)),
+                    ]),
+
+                    const Divider(height: 30),
+                    
+                    const Text("2. Dados do Síndico / Contato", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                        Expanded(flex: 2, child: _buildTextField('Nome do Síndico', _nomeSindicoController)),
+                        const SizedBox(width: 10),
+                        Expanded(flex: 1, child: _buildTextField('Celular / Telefone', _telefoneSindicoController)),
+                    ]),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                        Expanded(child: _buildTextField('E-mail Pessoal do Síndico', _emailSindicoController)),
                     ]),
 
                     const Divider(height: 30),
 
-                    const Text("2. Endereço Completo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                    const Text("3. Endereço Completo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     const SizedBox(height: 10),
                     Row(children: [
                         Expanded(flex: 1, child: _buildTextField('CEP', _cepController)),
@@ -188,7 +236,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
                     const Divider(height: 30),
 
-                    const Text("3. Parâmetros do Condomínio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                    const Text("4. Parâmetros do Condomínio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(child: _buildTextField('m³ Água Fria (R\$)', _precoAguaController)), 
