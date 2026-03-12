@@ -15,6 +15,7 @@ class CondominiosScreenWeb extends StatefulWidget {
 class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   List<dynamic> _condominios = [];
+  List<dynamic> _sindicosDisponiveis = []; // LISTA PARA O DROPDOWN
   bool _isLoading = true;
 
   // Controllers do Formulário
@@ -56,7 +57,24 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
         userId = widget.usuarioLogado!['id'];
         nivel = widget.usuarioLogado!['nivel_acesso'] ?? widget.usuarioLogado!['nivel'];
       }
+      
+      // 1. Busca os condomínios
       final dadosCondo = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
+      
+      // 2. Busca os usuários (Apenas para o MASTER) para preencher o Dropdown de Síndicos
+      if (nivel?.toLowerCase() == 'master' || widget.usuarioLogado == null) {
+        try {
+          final usuarios = await _apiService.getUsuarios();
+          // Filtra para mostrar APENAS quem é Síndico
+          _sindicosDisponiveis = usuarios.where((u) {
+            final tipo = u['tipo']?.toString().toLowerCase() ?? '';
+            return tipo.contains('síndico') || tipo.contains('sindico');
+          }).toList();
+        } catch (e) {
+          print("Aviso: Não foi possível carregar a lista de síndicos. $e");
+        }
+      }
+
       setState(() {
         _condominios = dadosCondo;
         _isLoading = false;
@@ -66,13 +84,10 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
     }
   }
 
-  // >>> CORREÇÃO APLICADA AQUI: ENVIANDO O NÍVEL DE ACESSO <<<
   Future<void> _excluir(int id) async {
     try {
       String nivelAcesso = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
-      
       await _apiService.excluirCondominio(id, nivelAcesso);
-      
       _carregarDados();
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Condomínio Excluído com sucesso.'), backgroundColor: Colors.green));
     } catch(e) {
@@ -169,97 +184,144 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       _diaCorteController.text = "1";
     }
 
+    // --- PREPARA A LISTA DO DROPDOWN PARA NÃO QUEBRAR ---
+    List<dynamic> listaDropdown = List.from(_sindicosDisponiveis);
+    
+    // Se o condomínio já tem um síndico salvo que não está mais na base de usuários (ex: foi apagado)
+    if (_nomeSindicoController.text.isNotEmpty) {
+      bool existe = listaDropdown.any((s) => s['nome'] == _nomeSindicoController.text);
+      if (!existe) {
+        listaDropdown.insert(0, {
+          'nome': _nomeSindicoController.text,
+          'cpf': 'Não encontrado na base',
+          'telefone': _telefoneSindicoController.text,
+          'email': _emailSindicoController.text
+        });
+      }
+    }
+
     showDialog(
       context: context, 
       barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
-            title: Text(item == null ? 'INCLUIR CONDOMÍNIO' : 'EDITAR CONDOMÍNIO', style: const TextStyle(fontWeight: FontWeight.bold)),
-            content: SizedBox(
-              width: 800, 
-              height: 600, 
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, 
-                  children: [
-                    const Text("1. Dados Principais", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(flex: 2, child: _buildTextField('Nome do Condomínio', _nomeController)),
-                        const SizedBox(width: 10),
-                        Expanded(flex: 1, child: _buildTextField('CNPJ', _cnpjController)),
-                    ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(child: _buildTextField('Email Condomínio', _emailCondoController)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildTextField('Telefone Comercial', _telefoneCondoController)),
-                    ]),
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              title: Text(item == null ? 'INCLUIR CONDOMÍNIO' : 'EDITAR CONDOMÍNIO', style: const TextStyle(fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: 800, 
+                height: 600, 
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, 
+                    children: [
+                      const Text("1. Dados Principais", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(flex: 2, child: _buildTextField('Nome do Condomínio', _nomeController)),
+                          const SizedBox(width: 10),
+                          Expanded(flex: 1, child: _buildTextField('CNPJ', _cnpjController)),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(child: _buildTextField('Email Condomínio', _emailCondoController)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildTextField('Telefone Comercial', _telefoneCondoController)),
+                      ]),
 
-                    const Divider(height: 30),
-                    
-                    const Text("2. Dados do Síndico / Contato", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(flex: 2, child: _buildTextField('Nome do Síndico', _nomeSindicoController)),
-                        const SizedBox(width: 10),
-                        Expanded(flex: 1, child: _buildTextField('Celular / Telefone', _telefoneSindicoController)),
-                    ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(child: _buildTextField('E-mail Pessoal do Síndico', _emailSindicoController)),
-                    ]),
+                      const Divider(height: 30),
+                      
+                      const Text("2. Dados do Síndico / Contato", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          // >>> AQUI ESTÁ O NOVO DROPDOWN OFICIAL DE SÍNDICOS <<<
+                          Expanded(
+                            flex: 2, 
+                            child: DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value: _nomeSindicoController.text.isEmpty ? null : _nomeSindicoController.text,
+                              decoration: const InputDecoration(labelText: 'Selecione o Síndico', border: OutlineInputBorder(), isDense: true),
+                              items: listaDropdown.isEmpty 
+                                ? [const DropdownMenuItem<String>(value: null, child: Text("Nenhum síndico cadastrado"))]
+                                : listaDropdown.map((s) {
+                                    return DropdownMenuItem<String>(
+                                      value: s['nome'],
+                                      child: Text(s['cpf'] != 'Não encontrado na base' ? "${s['nome']} (CPF: ${s['cpf']})" : "${s['nome']} (Salvo anteriormente)"),
+                                    );
+                                  }).toList(),
+                              onChanged: (novoNome) {
+                                if (novoNome != null) {
+                                  // Quando o Master escolhe um nome, preenchemos o telefone e email automaticamente!
+                                  final sindico = listaDropdown.firstWhere((s) => s['nome'] == novoNome);
+                                  setStateModal(() {
+                                    _nomeSindicoController.text = sindico['nome'] ?? '';
+                                    _telefoneSindicoController.text = sindico['telefone'] ?? '';
+                                    _emailSindicoController.text = sindico['email'] ?? '';
+                                  });
+                                }
+                              },
+                            )
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(flex: 1, child: _buildTextField('Celular / Telefone', _telefoneSindicoController)),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(child: _buildTextField('E-mail Pessoal do Síndico', _emailSindicoController)),
+                      ]),
 
-                    const Divider(height: 30),
+                      const Divider(height: 30),
 
-                    const Text("3. Endereço Completo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(flex: 1, child: _buildTextField('CEP', _cepController)),
-                        const SizedBox(width: 10),
-                        Expanded(flex: 3, child: _buildTextField('Logradouro (Rua)', _enderecoController)),
-                    ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(child: _buildTextField('Número', _numeroController)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildTextField('Complemento', _complementoController)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildTextField('Bairro', _bairroController)),
-                    ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                        Expanded(flex: 3, child: _buildTextField('Cidade', _cidadeController)),
-                        const SizedBox(width: 10),
-                        Expanded(flex: 1, child: _buildTextField('UF', _estadoController)),
-                    ]),
+                      const Text("3. Endereço Completo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(flex: 1, child: _buildTextField('CEP', _cepController)),
+                          const SizedBox(width: 10),
+                          Expanded(flex: 3, child: _buildTextField('Logradouro (Rua)', _enderecoController)),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(child: _buildTextField('Número', _numeroController)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildTextField('Complemento', _complementoController)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildTextField('Bairro', _bairroController)),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                          Expanded(flex: 3, child: _buildTextField('Cidade', _cidadeController)),
+                          const SizedBox(width: 10),
+                          Expanded(flex: 1, child: _buildTextField('UF', _estadoController)),
+                      ]),
 
-                    const Divider(height: 30),
+                      const Divider(height: 30),
 
-                    const Text("4. Parâmetros do Condomínio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(child: _buildTextField('m³ Água Fria (R\$)', _precoAguaController)), 
-                      const SizedBox(width: 10), 
-                      Expanded(child: _buildTextField('m³ Água Quente (R\$)', _precoAguaQuenteController)), 
-                      const SizedBox(width: 10), 
-                      Expanded(child: _buildTextField('m³ Gás (R\$)', _precoGasController)), 
-                      const SizedBox(width: 10), 
-                      Expanded(child: _buildTextField('Dia de Corte', _diaCorteController))
-                    ]),
-                  ]
+                      const Text("4. Parâmetros do Condomínio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(child: _buildTextField('m³ Água Fria (R\$)', _precoAguaController)), 
+                        const SizedBox(width: 10), 
+                        Expanded(child: _buildTextField('m³ Água Quente (R\$)', _precoAguaQuenteController)), 
+                        const SizedBox(width: 10), 
+                        Expanded(child: _buildTextField('m³ Gás (R\$)', _precoGasController)), 
+                        const SizedBox(width: 10), 
+                        Expanded(child: _buildTextField('Dia de Corte', _diaCorteController))
+                      ]),
+                    ]
+                  )
                 )
-              )
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
-              ElevatedButton.icon(
-                onPressed: () => _salvarCondominio(idEdicao: item?['id']), 
-                icon: const Icon(Icons.save, color: Colors.white),
-                label: const Text('SALVAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               ),
-            ],
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR', style: TextStyle(color: Colors.red))),
+                ElevatedButton.icon(
+                  onPressed: () => _salvarCondominio(idEdicao: item?['id']), 
+                  icon: const Icon(Icons.save, color: Colors.white),
+                  label: const Text('SALVAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                ),
+              ],
+            );
+          }
         );
       }
     );
@@ -338,7 +400,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('CNPJ: ${c['cnpj'] ?? 'Não informado'} | Telefone: ${c['telefone_condominio'] ?? 'Não informado'}'),
+                            Text('Síndico: ${c['nome_sindico'] ?? 'Não informado'} | Tel: ${c['telefone_sindico'] ?? 'Não informado'}'),
                             const SizedBox(height: 5),
                             Text('Endereço: ${c['endereco'] ?? 'Não informado'}', style: TextStyle(color: Colors.grey[700])),
                           ],
