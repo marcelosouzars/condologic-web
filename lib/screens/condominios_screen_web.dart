@@ -1,5 +1,3 @@
-// ==========================================>>> condominios_screen_web.dart
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service_web.dart';
@@ -22,6 +20,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
   final _nomeController = TextEditingController();
   final _cnpjController = TextEditingController();
   final _precoAguaController = TextEditingController();
+  final _precoAguaQuenteController = TextEditingController();
   final _precoGasController = TextEditingController();
   final _diaCorteController = TextEditingController();
   final _enderecoController = TextEditingController(); 
@@ -59,10 +58,8 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
     }
   }
 
-  // >>> AQUI ESTÁ A CORREÇÃO DA EXCLUSÃO EM CASCATA <<<
   Future<void> _excluir(int id) async {
     try {
-      // Pega o nível de acesso usando o nome correto da variável (usuarioLogado)
       String nivelAcesso = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
       
       await _apiService.excluirCondominio(id, nivelAcesso);
@@ -89,7 +86,9 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
         'cep': _cepController.text,
         'telefone_condominio': _telefoneCondoController.text,
         'email_condominio': _emailCondoController.text,
+        // Converte a vírgula para ponto antes de enviar pro Banco
         'valor_m3_agua': double.tryParse(_precoAguaController.text.replaceAll(',', '.')) ?? 0.0,
+        'valor_m3_agua_quente': double.tryParse(_precoAguaQuenteController.text.replaceAll(',', '.')) ?? 0.0,
         'valor_m3_gas': double.tryParse(_precoGasController.text.replaceAll(',', '.')) ?? 0.0,
         'dia_corte': int.tryParse(_diaCorteController.text) ?? 1,
         'tipo_estrutura': 'vertical'
@@ -118,8 +117,10 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       _enderecoController.text = item['endereco'] ?? ''; 
       _cidadeController.text = item['cidade'] ?? '';
       _estadoController.text = item['estado'] ?? '';
-      _precoAguaController.text = (item['valor_m3_agua'] ?? 0).toString();
-      _precoGasController.text = (item['valor_m3_gas'] ?? 0).toString();
+      // Formata de Ponto para Vírgula com 2 casas decimais na hora de exibir
+      _precoAguaController.text = (item['valor_m3_agua'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
+      _precoAguaQuenteController.text = (item['valor_m3_agua_quente'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
+      _precoGasController.text = (item['valor_m3_gas'] ?? 0).toStringAsFixed(2).replaceAll('.', ',');
       _diaCorteController.text = (item['dia_corte'] ?? 1).toString();
       _telefoneCondoController.text = item['telefone_condominio'] ?? '';
       _emailCondoController.text = item['email_condominio'] ?? '';
@@ -128,7 +129,10 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       _numeroController.clear(); _complementoController.clear(); _bairroController.clear();
       _cidadeController.clear(); _estadoController.clear(); _cepController.clear();
       _telefoneCondoController.clear(); _emailCondoController.clear();
-      _precoAguaController.text = "0.00"; _precoGasController.text = "0.00"; _diaCorteController.text = "1";
+      _precoAguaController.text = "0,00"; 
+      _precoAguaQuenteController.text = "0,00"; 
+      _precoGasController.text = "0,00"; 
+      _diaCorteController.text = "1";
     }
 
     showDialog(
@@ -187,9 +191,11 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                     const Text("3. Parâmetros do Condomínio", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     const SizedBox(height: 10),
                     Row(children: [
-                      Expanded(child: _buildTextField('Valor m³ Água (R\$)', _precoAguaController)), 
+                      Expanded(child: _buildTextField('m³ Água Fria (R\$)', _precoAguaController)), 
                       const SizedBox(width: 10), 
-                      Expanded(child: _buildTextField('Valor m³ Gás (R\$)', _precoGasController)), 
+                      Expanded(child: _buildTextField('m³ Água Quente (R\$)', _precoAguaQuenteController)), 
+                      const SizedBox(width: 10), 
+                      Expanded(child: _buildTextField('m³ Gás (R\$)', _precoGasController)), 
                       const SizedBox(width: 10), 
                       Expanded(child: _buildTextField('Dia de Corte', _diaCorteController))
                     ]),
@@ -247,7 +253,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
     return Column(
       children: [
-        // CABEÇALHO COM O BOTÃO INCLUIR ( + )
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween, 
           children: [
@@ -263,7 +268,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
         ),
         const SizedBox(height: 20),
         
-        // LISTA DE CONDOMÍNIOS
         Expanded(
           child: _isLoading 
             ? const Center(child: CircularProgressIndicator()) 
@@ -294,14 +298,12 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min, 
                           children: [
-                            // BOTÃO EDITAR
                             if (podeEditar) 
                               IconButton(
                                 icon: const Icon(Icons.edit, color: Colors.orange), 
                                 tooltip: "Editar Condomínio", 
                                 onPressed: () => _abrirModal(item: c)
                               ),
-                            // BOTÃO EXCLUIR
                             if (podeEditar) 
                               IconButton(
                                 icon: const Icon(Icons.delete, color: Colors.red), 
@@ -310,7 +312,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                               ),
                             const SizedBox(width: 10),
                             const VerticalDivider(),
-                            // BOTÃO ABRIR ESTRUTURA
                             Tooltip(
                               message: "Abrir Blocos e Unidades",
                               child: IconButton(

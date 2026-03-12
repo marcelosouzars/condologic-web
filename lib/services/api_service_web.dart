@@ -1,4 +1,3 @@
-// ==========================================>>> api_service_web.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -156,7 +155,6 @@ class ApiServiceWeb {
     throw Exception('Erro ao listar unidades');
   }
 
-  // >>> AQUI ESTÁ A CORREÇÃO DE LEITURA DE ERRO <<<
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/admin/unidade');
     final response = await http.post(
@@ -177,7 +175,6 @@ class ApiServiceWeb {
     }
   }
 
-  // >>> AQUI ESTÁ A CORREÇÃO DE LEITURA DE ERRO <<<
   Future<void> excluirUnidade(int blocoId, String identificacao) async {
     final url = Uri.parse('$baseUrl/admin/unidade/$blocoId/$identificacao');
     final response = await http.delete(url);
