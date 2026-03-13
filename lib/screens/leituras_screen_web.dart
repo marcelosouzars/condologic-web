@@ -20,8 +20,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
   // --- CONTROLE DE NAVEGAÇÃO "BONECAS RUSSAS" (DRILL-DOWN) ---
   // Níveis: 0 = Condomínios, 1 = Blocos, 2 = Unidades, 3 = Leituras
-  int _nivelAtual = 0; 
-  
+  int _nivelAtual = 0;
+
   List<dynamic> _condominios = [];
   List<dynamic> _blocos = [];
   List<dynamic> _unidades = [];
@@ -52,7 +52,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     try {
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
-      
       final dados = await _apiService.getCondominios(usuarioId: userId, nivel: nivel);
       
       if (mounted) {
@@ -88,7 +87,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     }
   }
 
-  // --- NÍVEL 2: CARREGAR UNIDADES DO BLOCO ---
+  // --- NÍVEL 2: CARREGAR UNIDADES DO BLOCO COM ORDENAÇÃO INTELIGENTE ---
   Future<void> _carregarUnidades(Map<String, dynamic> bloco) async {
     setState(() {
       _blocoSelecionado = bloco;
@@ -97,6 +96,17 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     });
     try {
       final dados = await _apiService.getUnidadesPorBloco(bloco['id']);
+      
+      // ITEM 3 RESOLVIDO: Ordenação matemática crescente dos apartamentos
+      dados.sort((a, b) {
+        final strA = a['identificacao'].toString();
+        final strB = b['identificacao'].toString();
+        final numA = int.tryParse(strA.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        final numB = int.tryParse(strB.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        if (numA != numB) return numA.compareTo(numB);
+        return strA.compareTo(strB); // Fallback para letras (ex: 101A, 101B)
+      });
+
       if (mounted) {
         setState(() {
           _unidades = dados;
@@ -117,10 +127,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       _isLoading = true;
     });
     try {
-      // Puxamos as leituras recentes do condomínio/bloco 
       final dados = await _apiService.getLeituras(_condominioSelecionado!['id'], blocoId: _blocoSelecionado!['id']);
       
-      // Filtramos apenas as que pertencem a unidade selecionada para a tela não pesar
       final leiturasUnidade = dados.where((l) => 
         l['unidade'].toString() == unidade['identificacao'].toString() &&
         l['bloco'].toString() == _blocoSelecionado!['nome'].toString()
@@ -276,40 +284,93 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           }
         );
 
-      // ========================================== NÍVEL 3: LEITURAS RECENTES
+      // ========================================== NÍVEL 3: LEITURAS (TABELA / PLANILHA)
       case 3: 
         if (_leituras.isEmpty) return const Center(child: Text("Nenhuma leitura finalizada encontrada para esta unidade.", style: TextStyle(color: Colors.grey)));
-        return ListView.builder(
-          itemCount: _leituras.length,
-          itemBuilder: (ctx, i) {
-            final l = _leituras[i];
-            String fotoUrl = l['foto_url'] ?? '';
-            return Card(
-              elevation: 2, margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: CircleAvatar(
-                  backgroundColor: l['tipo_medidor'] == 'gas' ? Colors.orange[100] : Colors.blue[100],
-                  child: Icon(Icons.speed, color: l['tipo_medidor'] == 'gas' ? Colors.orange[900] : Colors.blue[900])
-                ),
-                title: Text("Medidor de ${l['tipo_medidor'].toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text("Valor da Leitura: ${l['valor_lido']}\nRegistrado em: ${l['data_formatada'] ?? 'Data não informada'}", style: TextStyle(fontSize: 14, color: Colors.grey[800])),
-                ),
-                isThreeLine: true,
-                trailing: fotoUrl.isNotEmpty 
-                  ? OutlinedButton.icon(
-                      onPressed: () => _mostrarFoto(fotoUrl, unidadeNome: _unidadeSelecionada!['identificacao']),
-                      icon: const Icon(Icons.image, color: Colors.blue),
-                      label: const Text("Ver Foto Original", style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.blue), padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15)),
-                    )
-                  : Chip(label: const Text("Sem Foto", style: TextStyle(color: Colors.white, fontSize: 12)), backgroundColor: Colors.grey[400]),
-              ),
-            );
+
+        // ITEM 4 RESOLVIDO: Agrupamento em formato de Planilha (Data nas Linhas, Medidores nas Colunas)
+        Map<String, Map<String, dynamic>> leiturasAgrupadas = {};
+        
+        for (var l in _leituras) {
+          String dataHora = l['data_formatada'] ?? 'Sem Data';
+          String dataCurta = dataHora.length >= 10 ? dataHora.substring(0, 10) : dataHora;
+          
+          if (!leiturasAgrupadas.containsKey(dataCurta)) {
+            leiturasAgrupadas[dataCurta] = {
+              'data': dataCurta,
+              'agua_fria': '-', 'foto_agua_fria': '',
+              'agua_quente': '-', 'foto_agua_quente': '',
+              'gas': '-', 'foto_gas': ''
+            };
           }
+          
+          String tipo = l['tipo_medidor'].toString().toLowerCase();
+          String valor = "${l['valor_lido']}"; 
+          String foto = l['foto_url'] ?? '';
+          
+          if (tipo == 'agua_fria') {
+            leiturasAgrupadas[dataCurta]!['agua_fria'] = valor;
+            leiturasAgrupadas[dataCurta]!['foto_agua_fria'] = foto;
+          } else if (tipo == 'agua_quente') {
+            leiturasAgrupadas[dataCurta]!['agua_quente'] = valor;
+            leiturasAgrupadas[dataCurta]!['foto_agua_quente'] = foto;
+          } else if (tipo == 'gas' || tipo == 'gás') {
+            leiturasAgrupadas[dataCurta]!['gas'] = valor;
+            leiturasAgrupadas[dataCurta]!['foto_gas'] = foto;
+          }
+        }
+        
+        List<Map<String, dynamic>> linhasTabela = leiturasAgrupadas.values.toList();
+        
+        // Função auxiliar para desenhar a célula com número e botão da foto
+        DataCell buildCell(String valor, String fotoUrl) {
+          if (valor == '-') return const DataCell(Center(child: Text('-', style: TextStyle(color: Colors.grey))));
+          return DataCell(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(valor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  if (fotoUrl.isNotEmpty)
+                    InkWell(
+                      onTap: () => _mostrarFoto(fotoUrl, unidadeNome: _unidadeSelecionada!['identificacao']),
+                      child: const Text("Ver Foto", style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
+                    )
+                ],
+              ),
+            )
+          );
+        }
+
+        return Card(
+          elevation: 3,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: SizedBox(
+            width: double.infinity,
+            child: SingleChildScrollView(
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(Colors.blue[50]),
+                dataRowMaxHeight: 75,
+                dataRowMinHeight: 60,
+                columns: const [
+                  DataColumn(label: Text('Data da Medição', style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(label: Text('Água Fria', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+                  DataColumn(label: Text('Água Quente', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red))),
+                  DataColumn(label: Text('Gás', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange))),
+                ],
+                rows: linhasTabela.map((linha) {
+                  return DataRow(cells: [
+                    DataCell(Text(linha['data'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                    buildCell(linha['agua_fria'], linha['foto_agua_fria']),
+                    buildCell(linha['agua_quente'], linha['foto_agua_quente']),
+                    buildCell(linha['gas'], linha['foto_gas']),
+                  ]);
+                }).toList(),
+              ),
+            ),
+          ),
         );
     }
     return const SizedBox.shrink();
@@ -330,7 +391,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         
         const SizedBox(height: 20),
         
-        // CONTEÚDO (Lista de itens do nível atual)
+        // CONTEÚDO (Lista de itens do nível atual ou Tabela)
         Expanded(child: _buildConteudo()),
       ],
     );

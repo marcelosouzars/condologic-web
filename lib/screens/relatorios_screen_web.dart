@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data'; 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:excel/excel.dart'; // <--- EXCEL NATIVO!
+import 'package:excel/excel.dart'; 
+import 'package:csv/csv.dart';
 import 'package:intl/intl.dart'; 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -50,7 +51,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   }
 
   // ==============================================================
-  // 1. CARREGAMENTOS EM CASCATA
+  // 1. CARREGAMENTOS EM CASCATA E ORDENAÇÃO INTELIGENTE
   // ==============================================================
   
   Future<void> _carregarCondominios() async {
@@ -96,9 +97,21 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
           _unidades = dados;
           
           final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
-          andaresUnicos.sort(); 
-          _andares = andaresUnicos;
           
+          // --- ITEM 1 RESOLVIDO: Ordenação Inteligente de Andares ---
+          andaresUnicos.sort((a, b) {
+            if (a.toLowerCase() == 'térreo') return -1;
+            if (b.toLowerCase() == 'térreo') return 1;
+            
+            // Extrai só os números (ex: "10º Andar" -> 10)
+            final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
+            final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
+            
+            if (numA != null && numB != null) return numA.compareTo(numB);
+            return a.compareTo(b); // Fallback
+          });
+          
+          _andares = andaresUnicos;
           _selectedAndar = null;
           _selectedUnidade = null;
         });
@@ -202,12 +215,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
 
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condomínio'})['nome'];
     
-    // Inicia a criação do arquivo Excel Real
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Relatório Fotometria'];
     excel.setDefaultSheet('Relatório Fotometria');
 
-    // CABEÇALHO DO EXCEL
     sheetObject.appendRow([
       TextCellValue("Condomínio"), 
       TextCellValue("Data / Hora da Leitura"), 
@@ -220,7 +231,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       TextCellValue("Valor Faturado (R\$)")
     ]);
 
-    // INSERÇÃO DAS LINHAS
     for (var row in _leiturasFiltradas) {
       sheetObject.appendRow([
         TextCellValue(nomeCond.toString()),
@@ -235,7 +245,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       ]);
     }
 
-    // GERA O ARQUIVO .XLSX BINÁRIO
     var fileBytes = excel.save();
     if (fileBytes != null) {
       final blob = html.Blob([Uint8List.fromList(fileBytes)], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -260,7 +269,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
 
     doc.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape, // Deitamos a folha para caber as finanças
+        pageFormat: PdfPageFormat.a4.landscape, 
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
@@ -325,7 +334,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         const Text('Utilize os filtros em cascata abaixo para refinar os resultados antes de exportar.', style: TextStyle(color: Colors.grey)),
         const SizedBox(height: 20),
 
-        // --- PAINEL DE FILTROS ---
         Card(
           elevation: 3,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -335,7 +343,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 
-                // LINHA 1: FILTROS GLOBAIS (CONDOMÍNIO E PERÍODO)
                 Row(
                   children: [
                     Expanded(
@@ -383,7 +390,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                 const Divider(),
                 const SizedBox(height: 20),
 
-                // LINHA 2: FILTROS ESTRUTURAIS (BLOCO > ANDAR > UNIDADE)
                 Row(
                   children: [
                     Expanded(
@@ -423,20 +429,25 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                     ),
                     const SizedBox(width: 15),
                     
+                    // --- ITEM 2 RESOLVIDO: Campo bloqueado quando 'Todos os Andares' (null) está selecionado ---
                     Expanded(
                       child: DropdownButtonFormField<Map<String, dynamic>?>(
                         value: _selectedUnidade,
                         decoration: const InputDecoration(labelText: '5. Unidade', border: OutlineInputBorder()),
-                        items: _selectedBloco == null ? null : [
+                        items: (_selectedBloco == null || _selectedAndar == null) ? null : [
                           const DropdownMenuItem(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
                           ..._unidades.where((u) => _selectedAndar == null || (u['andar'] ?? 'Térreo') == _selectedAndar).map(
                             (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
                           ),
                         ],
-                        onChanged: (val) {
+                        onChanged: (_selectedBloco == null || _selectedAndar == null) ? null : (val) {
                           setState(() => _selectedUnidade = val);
                           _aplicarFiltrosLocais();
                         },
+                        disabledHint: Text(
+                          _selectedAndar == null ? "Indisponível (Andar não selecionado)" : "Selecione a Unidade", 
+                          style: TextStyle(color: Colors.grey[500])
+                        ),
                       ),
                     ),
                   ],
@@ -448,7 +459,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
 
         const SizedBox(height: 20),
 
-        // --- BOTÕES DE EXPORTAÇÃO ---
         if (_leiturasFiltradas.isNotEmpty)
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -473,7 +483,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         
         const SizedBox(height: 20),
 
-        // --- TABELA DE RESULTADOS (AGORA COM DADOS FINANCEIROS!) ---
         Expanded(
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
