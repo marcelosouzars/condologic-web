@@ -11,6 +11,7 @@ import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
 import 'exportacao_screen_web.dart';
 import 'login_screen_web.dart';
+import 'importacao_screen_web.dart'; // <--- IMPORTAÇÃO ADICIONADA AQUI
 import '../services/api_service_web.dart';
 
 class MainWebScreen extends StatefulWidget {
@@ -176,6 +177,12 @@ class _MainWebScreenState extends State<MainWebScreen> {
         selectedIcon: Icon(Icons.download),
         label: Text('Exportar Dados'),
       ),
+      // <--- NOVO MENU DE IMPORTAÇÃO ADICIONADO AQUI
+      const NavigationRailDestination(
+        icon: Icon(Icons.upload_file_outlined),
+        selectedIcon: Icon(Icons.upload_file),
+        label: Text('Importar Histórico'),
+      ),
     ];
 
     List<Widget> telas = [
@@ -184,6 +191,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       LeiturasScreenWeb(tenantId: tenantIdAtual),
       const RelatoriosScreenWeb(),
       const ExportacaoScreenWeb(), 
+      const ImportacaoScreenWeb(), // <--- NOVA TELA ADICIONADA AQUI
     ];
 
     return Scaffold(

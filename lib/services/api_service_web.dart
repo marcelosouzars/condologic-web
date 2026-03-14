@@ -304,4 +304,25 @@ class ApiServiceWeb {
     }
     return [];
   }
+
+  // ==========================================================
+  // NOVA FUNÇÃO: IMPORTAÇÃO DE HISTÓRICO (ONBOARDING)
+  // ==========================================================
+  Future<Map<String, dynamic>> importarHistorico(int tenantId, List<Map<String, dynamic>> dados) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/importacao'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'tenant_id': tenantId,
+        'dados': dados,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro desconhecido na importação.');
+    }
+  }
 }

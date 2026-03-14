@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:excel/excel.dart'; 
-import 'package:csv/csv.dart';
 import 'package:intl/intl.dart'; 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -43,6 +42,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     end: DateTime.now(),
   );
   bool _isLoading = false;
+  bool _jaBuscou = false;
 
   @override
   void initState() {
@@ -98,17 +98,15 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
           
           final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
           
-          // --- ITEM 1 RESOLVIDO: Ordenação Inteligente de Andares ---
           andaresUnicos.sort((a, b) {
             if (a.toLowerCase() == 'térreo') return -1;
             if (b.toLowerCase() == 'térreo') return 1;
             
-            // Extrai só os números (ex: "10º Andar" -> 10)
             final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
             final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
             
             if (numA != null && numB != null) return numA.compareTo(numB);
-            return a.compareTo(b); // Fallback
+            return a.compareTo(b); 
           });
           
           _andares = andaresUnicos;
@@ -122,18 +120,36 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   }
 
   // ==============================================================
-  // 2. BUSCA NO BACKEND E FILTRO LOCAL
+  // 2. BUSCA BLINDADA (PLANO A e PLANO B) + FILTRO LOCAL
   // ==============================================================
 
   Future<void> _buscarRelatorio() async {
     if (_selectedTenantId == null) return;
-    setState(() => _isLoading = true);
+    
+    setState(() {
+      _isLoading = true;
+      _jaBuscou = true;
+      _leiturasBrutas = [];
+      _leiturasFiltradas = [];
+    });
     
     try {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
 
-      final dados = await _apiService.getLeituras(_selectedTenantId!, dtInicio: dtInicioStr, dtFim: dtFimStr);
+      // PLANO A: Tenta buscar com as datas (Caso o backend esteja atualizado)
+      List<dynamic> dados = await _apiService.getLeituras(
+        _selectedTenantId!, 
+        dtInicio: dtInicioStr, 
+        dtFim: dtFimStr,
+        blocoId: _selectedBloco?['id']
+      );
+
+      // PLANO B: Se vier vazio, o backend antigo não entendeu a data e bloqueou.
+      // Buscamos TODOS os dados sem data e o próprio aplicativo filtra localmente!
+      if (dados.isEmpty) {
+         dados = await _apiService.getLeituras(_selectedTenantId!, blocoId: _selectedBloco?['id']);
+      }
       
       if (mounted) {
         setState(() {
@@ -141,10 +157,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
           _aplicarFiltrosLocais(); 
           _isLoading = false;
         });
-        
-        if (_leiturasFiltradas.isEmpty) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum dado encontrado para estes filtros e datas.')));
-        }
       }
     } catch (e) {
       if(mounted) {
@@ -157,21 +169,55 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   void _aplicarFiltrosLocais() {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
-        bool passaBloco = _selectedBloco == null || leitura['bloco'].toString() == _selectedBloco!['nome'].toString();
         
+        // 1. FILTRO DE DATA LOCAL (Para garantir que o Plano B funcione com precisão)
+        bool passaData = true;
+        try {
+          String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
+          if (dataStr.isNotEmpty && dataStr != '-') {
+            DateTime? dtLeitura;
+            if (dataStr.contains('/')) {
+              final p = dataStr.split(' ')[0].split('/');
+              if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+            } else if (dataStr.contains('-')) {
+              dtLeitura = DateTime.tryParse(dataStr);
+            }
+            
+            if (dtLeitura != null) {
+              DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
+              DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
+              passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
+            }
+          }
+        } catch (_) {} // Se a data falhar na conversão, deixa passar para não esconder dados à toa
+
+        // 2. FILTRO DE BLOCO
+        bool passaBloco = true;
+        if (_selectedBloco != null) {
+          String blocoLeitura = (leitura['bloco'] ?? leitura['bloco_nome'] ?? '').toString().trim().toLowerCase();
+          String blocoSelecionado = _selectedBloco!['nome'].toString().trim().toLowerCase();
+          passaBloco = blocoLeitura == blocoSelecionado;
+        }
+        
+        // 3. FILTRO DE ANDAR
         bool passaAndar = true;
+        String unidLeitura = (leitura['unidade'] ?? leitura['identificacao'] ?? '').toString().trim().toLowerCase();
+        
         if (_selectedAndar != null && _selectedUnidade == null) {
-          List<String> unidadesDoAndarSelecionado = _unidades
-              .where((u) => (u['andar'] ?? 'Térreo') == _selectedAndar)
-              .map((u) => u['identificacao'].toString())
+          List<String> unidsDoAndar = _unidades
+              .where((u) => (u['andar']?.toString().trim().toLowerCase() ?? 'térreo') == _selectedAndar!.trim().toLowerCase())
+              .map((u) => (u['identificacao'] ?? '').toString().trim().toLowerCase())
               .toList();
-          
-          passaAndar = unidadesDoAndarSelecionado.contains(leitura['unidade'].toString());
+          passaAndar = unidsDoAndar.contains(unidLeitura);
         }
 
-        bool passaUnidade = _selectedUnidade == null || leitura['unidade'].toString() == _selectedUnidade!['identificacao'].toString();
+        // 4. FILTRO DE UNIDADE
+        bool passaUnidade = true;
+        if (_selectedUnidade != null) {
+          passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
+        }
 
-        return passaBloco && passaAndar && passaUnidade;
+        return passaData && passaBloco && passaAndar && passaUnidade;
       }).toList();
     });
   }
@@ -199,7 +245,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     );
 
     if (picked != null && picked != _dataSelecionada) {
-      setState(() => _dataSelecionada = picked);
+      setState(() {
+        _dataSelecionada = picked;
+        _jaBuscou = false;
+      });
     }
   }
 
@@ -208,10 +257,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   // ==============================================================
 
   void _exportarExcel() {
-    if (_leiturasFiltradas.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não há dados para exportar.')));
-      return;
-    }
+    if (_leiturasFiltradas.isEmpty) return;
 
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condomínio'})['nome'];
     
@@ -297,10 +343,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
               data: <List<String>>[
                 <String>['Data/Hora', 'Bloco', 'Unid.', 'Medidor', 'Ant.', 'Atual', 'Cons.(m³)', 'Faturado(R\$)'],
                 ..._leiturasFiltradas.map((item) => [
-                  item['data_formatada'].toString(),
-                  item['bloco'].toString(),
-                  item['unidade'].toString(),
-                  item['tipo_medidor'].toString().toUpperCase(),
+                  item['data_formatada']?.toString() ?? '-',
+                  item['bloco']?.toString() ?? '-',
+                  item['unidade']?.toString() ?? '-',
+                  item['tipo_medidor']?.toString().toUpperCase() ?? '-',
                   item['leitura_anterior']?.toString() ?? '0',
                   item['valor_lido']?.toString() ?? '0',
                   item['consumo']?.toString() ?? '0',
@@ -354,7 +400,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                           return DropdownMenuItem<int>(value: item['id'], child: Text(item['nome']));
                         }).toList(),
                         onChanged: (val) {
-                          setState(() => _selectedTenantId = val);
+                          setState(() { _selectedTenantId = val; _jaBuscou = false; });
                           _carregarBlocos(val!);
                         },
                       ),
@@ -429,14 +475,13 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                     ),
                     const SizedBox(width: 15),
                     
-                    // --- ITEM 2 RESOLVIDO: Campo bloqueado quando 'Todos os Andares' (null) está selecionado ---
                     Expanded(
                       child: DropdownButtonFormField<Map<String, dynamic>?>(
                         value: _selectedUnidade,
                         decoration: const InputDecoration(labelText: '5. Unidade', border: OutlineInputBorder()),
                         items: (_selectedBloco == null || _selectedAndar == null) ? null : [
                           const DropdownMenuItem(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
-                          ..._unidades.where((u) => _selectedAndar == null || (u['andar'] ?? 'Térreo') == _selectedAndar).map(
+                          ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map(
                             (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
                           ),
                         ],
@@ -486,8 +531,8 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         Expanded(
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _leiturasBrutas.isEmpty
-              ? Center(
+            : !_jaBuscou 
+              ? Center( 
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -497,44 +542,66 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                     ],
                   )
                 )
-              : _leiturasFiltradas.isEmpty 
-                ? const Center(child: Text("Nenhuma leitura encontrada com os filtros atuais.", style: TextStyle(color: Colors.red)))
-                : Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: SingleChildScrollView(
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(Colors.blue[50]),
-                          columns: const [
-                            DataColumn(label: Text('Data / Hora', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Bloco / Unidade', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Medidor', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Leitura Ant.', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Leitura Atual', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: Text('Consumo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
-                            DataColumn(label: Text('Faturado (R\$)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
-                          ],
-                          rows: _leiturasFiltradas.map((l) {
-                            return DataRow(cells: [
-                              DataCell(Text(l['data_formatada'] ?? '-')),
-                              DataCell(Text("${l['bloco']} - ${l['unidade']}", style: const TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Chip(
-                                label: Text(l['tipo_medidor'].toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                                backgroundColor: l['tipo_medidor'] == 'gas' ? Colors.orange : Colors.blue[600],
-                                padding: EdgeInsets.zero,
-                              )),
-                              DataCell(Text(l['leitura_anterior']?.toString() ?? '0')),
-                              DataCell(Text(l['valor_lido']?.toString() ?? '0', style: const TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('${l['consumo'] ?? '0'} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
-                              DataCell(Text('R\$ ${l['valor_total_faturado'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
-                            ]);
-                          }).toList(),
+              : _leiturasBrutas.isEmpty 
+                ? Center( 
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.event_busy, size: 80, color: Colors.grey[300]),
+                        const SizedBox(height: 10),
+                        Text("O banco de dados não retornou leituras para este condomínio.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 5),
+                        const Text("Certifique-se que o Bloco/Condomínio correto foi escolhido.", style: TextStyle(color: Colors.grey)),
+                      ],
+                    )
+                  )
+                : _leiturasFiltradas.isEmpty 
+                  ? Center( 
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]),
+                          const SizedBox(height: 10),
+                          const Text("Existem leituras registradas, mas nenhuma caiu nos seus filtros (Data, Bloco ou Andar).", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        ],
+                      )
+                    )
+                  : Card( 
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SingleChildScrollView(
+                          child: DataTable(
+                            headingRowColor: WidgetStateProperty.all(Colors.blue[50]),
+                            columns: const [
+                              DataColumn(label: Text('Data / Hora', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Bloco / Unidade', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Medidor', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Ant.', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Atual', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Consumo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
+                              DataColumn(label: Text('Faturado (R\$)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
+                            ],
+                            rows: _leiturasFiltradas.map((l) {
+                              return DataRow(cells: [
+                                DataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-')),
+                                DataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold))),
+                                DataCell(Chip(
+                                  label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                  backgroundColor: (l['tipo_medidor']?.toString().toLowerCase() == 'gas' || l['tipo_medidor']?.toString().toLowerCase() == 'gás') ? Colors.orange : Colors.blue[600],
+                                  padding: EdgeInsets.zero,
+                                )),
+                                DataCell(Text(l['leitura_anterior']?.toString() ?? '0')),
+                                DataCell(Text(l['valor_lido']?.toString() ?? '0', style: const TextStyle(fontWeight: FontWeight.bold))),
+                                DataCell(Text('${l['consumo']?.toString() ?? '0'} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
+                                DataCell(Text('R\$ ${l['valor_total_faturado']?.toString() ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
+                              ]);
+                            }).toList(),
+                          ),
                         ),
                       ),
                     ),
-                  ),
         ),
       ],
     );
