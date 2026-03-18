@@ -17,11 +17,11 @@ class ImportacaoScreenWeb extends StatefulWidget {
 
 class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
-  
+
   List<dynamic> _condominios = [];
   int? _selectedTenantId;
   bool _isLoading = false;
-  
+
   PlatformFile? _ficheiroSelecionado;
   Map<String, dynamic>? _resultadoImportacao;
 
@@ -83,7 +83,7 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text("O CondoLogic não exige nomes exatos no cabeçalho, mas exige que as informações estejam ESTRITAMENTE nesta ordem nas 15 colunas:", style: TextStyle(fontSize: 14, color: Colors.grey[800])),
+                Text("O CondoLogic não exige nomes exatos no cabeçalho, mas exige que as informações estejam ESTRITAMENTE nesta ordem nas colunas:", style: TextStyle(fontSize: 14, color: Colors.grey[800])),
                 const SizedBox(height: 15),
                 _buildRegraItem("Coluna 1: Bloco", "Ex: A"),
                 _buildRegraItem("Coluna 2: Unidade", "Ex: 201"),
@@ -142,19 +142,19 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
             Text("Arquivo Fora do Padrão", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ]
         ),
-        content: Text("O ficheiro selecionado não possui as 15 colunas obrigatórias.\n\nSua planilha possui apenas $colunasEncontradas colunas.\n\nPor favor, utilize o formato oficial com a ordem correta das 15 colunas.", style: const TextStyle(fontSize: 15)),
+        content: Text("O ficheiro selecionado não possui a estrutura mínima obrigatória.\n\nSua planilha foi identificada com apenas $colunasEncontradas coluna(s) na primeira linha.\n\nPor favor, garanta que o arquivo esteja salvo como CSV separado por vírgula ou ponto-e-vírgula e contenha a ordem correta.", style: const TextStyle(fontSize: 15)),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(ctx); 
-              _abrirModalAjuda(); 
-            }, 
+              Navigator.pop(ctx);
+              _abrirModalAjuda();
+            },
             child: const Text("VER ESTRUTURA PADRÃO", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold))
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text("OK, VOU CORRIGIR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text("OK, VOU VERIFICAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           )
         ]
       )
@@ -199,18 +199,16 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
       allowedExtensions: ['csv', 'xlsx'],
       withData: true,
     );
-
     if (result != null) {
       setState(() {
         _ficheiroSelecionado = result.files.first;
-        _resultadoImportacao = null; 
-        _dadosPreparados = []; 
+        _resultadoImportacao = null;
+        _dadosPreparados = [];
         _dadosPreview = [];
       });
     }
   }
 
-  // Funções Utilitárias para Ler Celulas Dinamicamente
   dynamic _getDynamic(List linha, int index) {
     if (index >= linha.length) return '';
     return linha[index];
@@ -234,16 +232,16 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
     if (v.isEmpty || v == '-') return 0.0;
     String temp = v.replaceAll('R\$', '').trim();
     if (temp.contains('.') && temp.contains(',')) {
-       temp = temp.replaceAll('.', '').replaceAll(',', '.');
+      temp = temp.replaceAll('.', '').replaceAll(',', '.');
     } else {
-       temp = temp.replaceAll(',', '.');
+      temp = temp.replaceAll(',', '.');
     }
     String numLimpo = temp.replaceAll(RegExp(r'[^0-9\.-]'), '');
     return double.tryParse(numLimpo) ?? 0.0;
   }
 
   // ==============================================================
-  // PASSO 1: ANALISA (AGORA PELA ORDEM DAS COLUNAS!)
+  // PASSO 1: ANALISADOR BLINDADO DE CSV / XLSX
   // ==============================================================
   Future<void> _analisarArquivo() async {
     if (_selectedTenantId == null || _ficheiroSelecionado == null || _ficheiroSelecionado!.bytes == null) {
@@ -269,24 +267,19 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
         } catch (e) {
           throw Exception("Falha ao abrir a planilha. O arquivo pode estar corrompido ou ser um CSV disfarçado.");
         }
-
         if (excel.tables.keys.isEmpty) throw Exception("O arquivo Excel não possui abas visíveis.");
         var tabela = excel.tables[excel.tables.keys.first];
-        
+
         if (tabela != null && tabela.rows.isNotEmpty) {
-          // Checa apenas a quantidade de colunas (Exige pelo menos 14 colunas. A 15ª imagem é opcional)
-          if (tabela.rows[0].length < 14) {
+          if (tabela.rows[0].length < 12) {
             if (mounted) {
               setState(() => _isLoading = false);
               _mostrarErroFaltaColunas(tabela.rows[0].length);
             }
             return;
           }
-
-          // Lê da linha 1 (pulando o cabeçalho index 0)
           for (int i = 1; i < tabela.rows.length; i++) {
             var linha = tabela.rows[i];
-            
             Map<String, dynamic> registo = {
               'bloco': _safeString(_getDynamic(linha, 0)),
               'unidade': _safeString(_getDynamic(linha, 1)),
@@ -304,37 +297,67 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
               'obs': _safeString(_getDynamic(linha, 13)),
               'foto': _safeString(_getDynamic(linha, 14)),
             };
-
             if (registo['bloco'].toString().isNotEmpty && registo['unidade'].toString().isNotEmpty) {
               dadosExtraidos.add(registo);
             }
           }
         }
-      } 
-      else if (extensao == 'csv') {
+      } else if (extensao == 'csv') {
         String csvString;
-        try { csvString = utf8.decode(bytes); } catch (e) { csvString = const Latin1Codec().decode(bytes); }
+        try {
+          csvString = utf8.decode(bytes);
+        } catch (e) {
+          csvString = const Latin1Codec().decode(bytes);
+        }
 
-        List<List<dynamic>> csvTable = const CsvToListConverter(fieldDelimiter: ',').convert(csvString);
-        if (csvTable.isEmpty || csvTable[0].length <= 1) {
-          csvTable = const CsvToListConverter(fieldDelimiter: ';').convert(csvString);
+        // ==============================================================
+        // A MÁGICA: Detecção Blindada de Excel MS-DOS (CP850)
+        // ==============================================================
+        // Se o síndico salvou como "CSV (MS-DOS)", o 'Á' vira 'µ' e o 'á' vira um espaço NBSP (\xA0)
+        if (csvString.contains('µgua') || csvString.contains('G\xA0s') || csvString.contains('G s')) {
+          csvString = csvString
+              .replaceAll('µ', 'Á')           // Conserta o Á
+              .replaceAll('\xA0', 'á')        // Conserta o á (espaço invisível MS-DOS)
+              .replaceAll('\x82', 'é')        // Conserta o é
+              .replaceAll('\xA1', 'í')        // Conserta o í
+              .replaceAll('\xA2', 'ó')        // Conserta o ó
+              .replaceAll('\xA3', 'ú')        // Conserta o ú
+              .replaceAll('\x87', 'ç')        // Conserta o ç
+              .replaceAll('\x80', 'Ç')        // Conserta o Ç
+              .replaceAll('\xC6', 'ã')        // Conserta o ã
+              .replaceAll('\xC7', 'Ã')        // Conserta o Ã
+              .replaceAll('G s', 'Gás')       // Prevenção para caso já tenha virado espaço comum
+              .replaceAll('g s', 'gás');
+        }
+
+        String delimiter = csvString.contains(';') ? ';' : ',';
+        String eol = csvString.contains('\r\n') ? '\r\n' : '\n';
+        List<List<dynamic>> csvTable = const CsvToListConverter().convert(
+          csvString,
+          fieldDelimiter: delimiter,
+          eol: eol,
+        );
+
+        if (csvTable.length <= 1) {
+          csvTable = const CsvToListConverter().convert(
+            csvString,
+            fieldDelimiter: delimiter,
+            eol: '\r',
+          );
         }
 
         if (csvTable.isNotEmpty) {
-          // Checa quantidade de colunas. O CSV usa length para contar.
-          int colCount = csvTable[0].where((c) => c.toString().trim().isNotEmpty).length;
-          if (colCount < 14) {
+          int colCount = csvTable[0].length;
+          if (colCount < 12) {
             if (mounted) {
               setState(() => _isLoading = false);
               _mostrarErroFaltaColunas(colCount);
             }
             return;
           }
-
           for (int i = 1; i < csvTable.length; i++) {
             var linha = csvTable[i];
-            
-            // Mapagem direta pela Posição do Array (Index)
+            if (linha.length < 2) continue;
             Map<String, dynamic> registo = {
               'bloco': _getDynamic(linha, 0).toString().trim(),
               'unidade': _getDynamic(linha, 1).toString().trim(),
@@ -352,7 +375,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
               'obs': _getDynamic(linha, 13).toString().trim(),
               'foto': _getDynamic(linha, 14).toString().trim(),
             };
-
             if (registo['bloco'].toString().isNotEmpty && registo['unidade'].toString().isNotEmpty) {
               dadosExtraidos.add(registo);
             }
@@ -361,13 +383,12 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
       }
 
       if (dadosExtraidos.isEmpty) {
-        throw Exception("A planilha parece estar vazia de dados válidos.");
+        throw Exception("A planilha parece estar vazia ou as quebras de linha não foram reconhecidas.");
       }
 
-      // Prepara os dados para a grade de pré-visualização
       List<List<dynamic>> prev = dadosExtraidos.map((d) {
         return [
-          d['bloco'], d['unidade'], d['tipo'], d['mes'], 
+          d['bloco'], d['unidade'], d['tipo'], d['mes'],
           d['leitura_anterior'], d['leitura_atual'], d['consumo']
         ];
       }).toList();
@@ -377,7 +398,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
         _dadosPreview = prev;
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() => _isLoading = false);
       _mostrarMensagem(e.toString().replaceAll('Exception: ', ''), isError: true);
@@ -391,15 +411,13 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
     setState(() => _isLoading = true);
     try {
       final resposta = await _apiService.importarHistorico(_selectedTenantId!, _dadosPreparados);
-      
       setState(() {
         _resultadoImportacao = resposta;
         _isLoading = false;
-        _dadosPreparados = []; // Limpa a pré-visualização
+        _dadosPreparados = []; 
         _dadosPreview = [];
-        _ficheiroSelecionado = null; 
+        _ficheiroSelecionado = null;
       });
-
     } catch (e) {
       setState(() => _isLoading = false);
       _mostrarMensagem(e.toString().replaceAll('Exception: ', ''), isError: true);
@@ -408,14 +426,11 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
 
   void _baixarRelatorioErros() {
     if (_resultadoImportacao == null || _resultadoImportacao!['erros'] == null) return;
-    
     List<dynamic> erros = _resultadoImportacao!['erros'];
     String conteudoTexto = "RELATÓRIO DE INCONSISTÊNCIAS - CONDOLOGIC\n\n";
-    
     for (var erro in erros) {
       conteudoTexto += "- $erro\n";
     }
-
     final bytes = utf8.encode(conteudoTexto);
     final blob = html.Blob([bytes], 'text/plain');
     final url = html.Url.createObjectUrlFromBlob(blob);
@@ -458,9 +473,8 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
 
                   const Text("2. Formato Nativo Requerido", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 5),
-                  const Text("O sistema validará os dados de acordo com a ORDEM em que as 15 colunas aparecem.", style: TextStyle(color: Colors.grey)),
+                  const Text("O sistema validará os dados de acordo com a ORDEM em que as colunas aparecem.", style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 10),
-                  
                   Row(
                     children: [
                       ElevatedButton.icon(
@@ -520,9 +534,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
             ),
           ),
 
-          // =========================================================================
-          // NOVA SEÇÃO: 4. PRÉ-VISUALIZAÇÃO (Só aparece se tiver dados analisados)
-          // =========================================================================
           if (_dadosPreparados.isNotEmpty && _resultadoImportacao == null) ...[
             const SizedBox(height: 30),
             Card(
@@ -543,7 +554,7 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
                     const SizedBox(height: 15),
                     const Text("Verifique as primeiras linhas abaixo para garantir que a formatação foi lida corretamente antes de salvar.", style: TextStyle(color: Colors.grey)),
                     const SizedBox(height: 15),
-                    
+
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
