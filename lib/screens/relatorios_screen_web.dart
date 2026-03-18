@@ -319,6 +319,47 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
     final periodoStr = "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} a ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}";
 
+    // Helpers para construir células no PDF (CORRIGIDO)
+    pw.Widget buildPdfHeader(String text) {
+      return pw.Container(
+        alignment: pw.Alignment.centerLeft,
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+      );
+    }
+
+    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft}) {
+      return pw.Container(
+        alignment: alignment,
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
+      );
+    }
+
+    pw.Widget buildPdfChip(String tipo) {
+      PdfColor corFundo = PdfColors.blue600;
+      String texto = tipo.toUpperCase();
+      
+      if (tipo.toLowerCase().contains('quente')) {
+        corFundo = PdfColors.red600;
+      } else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) {
+        corFundo = PdfColors.orange600;
+      }
+
+      return pw.Container(
+        alignment: pw.Alignment.centerLeft,
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: pw.BoxDecoration(
+            color: corFundo,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+          ),
+          child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        )
+      );
+    }
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape, 
@@ -339,27 +380,41 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
             pw.Text("Período analisado: $periodoStr", style: pw.TextStyle(fontSize: 12)),
             pw.Text("Filtros aplicados: Bloco: ${_selectedBloco?['nome'] ?? 'Todos'} | Andar: ${_selectedAndar ?? 'Todos'} | Unidade: ${_selectedUnidade?['identificacao'] ?? 'Todas'}", style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
             pw.SizedBox(height: 20),
-            pw.Table.fromTextArray(
-              context: context,
+            
+            // Construção da Tabela Customizada
+            pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-              cellStyle: const pw.TextStyle(fontSize: 10),
-              cellAlignment: pw.Alignment.centerLeft,
-              data: <List<String>>[
-                <String>['Data/Hora', 'Bloco', 'Unid.', 'Medidor', 'Ant.', 'Atual', 'Cons.(m³)', 'Faturado(R\$)'],
-                ..._leiturasFiltradas.map((item) => [
-                  item['data_formatada']?.toString() ?? '-',
-                  item['bloco']?.toString() ?? '-',
-                  item['unidade']?.toString() ?? '-',
-                  item['tipo_medidor']?.toString().toUpperCase() ?? '-',
-                  _formatarMedicao(item['leitura_anterior']),
-                  _formatarMedicao(item['valor_lido']),
-                  _formatarMedicao(item['consumo']),
-                  "R\$ ${_formatarMoeda(item['valor_total_faturado'])}"
-                ])
-              ],
+              children: [
+                // Cabeçalho
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.blue800),
+                  children: [
+                    buildPdfHeader('Data/Hora'),
+                    buildPdfHeader('Bloco'),
+                    buildPdfHeader('Unid.'),
+                    buildPdfHeader('Medidor'),
+                    buildPdfHeader('Ant.'),
+                    buildPdfHeader('Atual'),
+                    buildPdfHeader('Cons.(m³)'),
+                    buildPdfHeader('Faturado(R\$)'),
+                  ]
+                ),
+                // Linhas
+                ..._leiturasFiltradas.map((item) => pw.TableRow(
+                  children: [
+                    buildPdfCell(item['data_formatada']?.toString() ?? '-'),
+                    buildPdfCell(item['bloco']?.toString() ?? '-'),
+                    buildPdfCell(item['unidade']?.toString() ?? '-'),
+                    buildPdfChip(item['tipo_medidor']?.toString() ?? '-'),
+                    buildPdfCell(_formatarMedicao(item['leitura_anterior'])),
+                    buildPdfCell(_formatarMedicao(item['valor_lido'])),
+                    buildPdfCell(_formatarMedicao(item['consumo'])),
+                    buildPdfCell("R\$ ${_formatarMoeda(item['valor_total_faturado'])}"),
+                  ]
+                ))
+              ]
             ),
+            
             pw.SizedBox(height: 20),
             pw.Divider(),
             pw.Row(
@@ -590,12 +645,21 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                               DataColumn(label: Text('Faturado (R\$)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
                             ],
                             rows: _leiturasFiltradas.map((l) {
+                              // DEFINIÇÃO DA COR DO BLOCO NA TELA DO SISTEMA:
+                              Color? corFundo = Colors.blue[600];
+                              String tipoStr = l['tipo_medidor']?.toString().toLowerCase() ?? '';
+                              if (tipoStr.contains('quente')) {
+                                corFundo = Colors.red[600];
+                              } else if (tipoStr.contains('gas') || tipoStr.contains('gás')) {
+                                corFundo = Colors.orange;
+                              }
+
                               return DataRow(cells: [
                                 DataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-')),
                                 DataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold))),
                                 DataCell(Chip(
                                   label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                                  backgroundColor: (l['tipo_medidor']?.toString().toLowerCase() == 'gas' || l['tipo_medidor']?.toString().toLowerCase() == 'gás') ? Colors.orange : Colors.blue[600],
+                                  backgroundColor: corFundo,
                                   padding: EdgeInsets.zero,
                                 )),
                                 DataCell(Text(_formatarMedicao(l['leitura_anterior']))),

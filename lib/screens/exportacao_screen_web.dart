@@ -201,6 +201,47 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     final doc = pw.Document();
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
     
+    // Helpers para formatar as células customizadas do PDF (CORRIGIDO)
+    pw.Widget buildPdfHeader(String text) {
+      return pw.Container(
+        alignment: pw.Alignment.centerLeft,
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+      );
+    }
+
+    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft}) {
+      return pw.Container(
+        alignment: alignment,
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
+      );
+    }
+
+    pw.Widget buildPdfChip(String tipo) {
+      PdfColor corFundo = PdfColors.blue600;
+      String texto = tipo.toUpperCase();
+      
+      if (tipo.toLowerCase().contains('quente')) {
+        corFundo = PdfColors.red600;
+      } else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) {
+        corFundo = PdfColors.orange600;
+      }
+
+      return pw.Container(
+        alignment: pw.Alignment.centerLeft,
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: pw.BoxDecoration(
+            color: corFundo,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+          ),
+          child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        )
+      );
+    }
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -210,21 +251,32 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
             pw.Header(level: 0, child: pw.Text("Extrato de Leituras para Integração", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold))),
             pw.Text("Condomínio: $nomeCond"),
             pw.SizedBox(height: 20),
-            pw.Table.fromTextArray(
-              context: context,
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-              data: <List<String>>[
-                <String>['Data/Hora', 'Bloco', 'Unidade', 'Medidor', 'Leitura', 'Consumo'],
-                ..._leituras.map((item) => [
-                  item['data_formatada'].toString(),
-                  item['bloco'].toString(),
-                  item['unidade'].toString(),
-                  item['tipo_medidor'].toString().toUpperCase(),
-                  _formatarMedicao(item['valor_lido']),
-                  _formatarMedicao(item['consumo'])
-                ])
-              ],
+            
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300),
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.blue800),
+                  children: [
+                    buildPdfHeader('Data/Hora'),
+                    buildPdfHeader('Bloco'),
+                    buildPdfHeader('Unidade'),
+                    buildPdfHeader('Medidor'),
+                    buildPdfHeader('Leitura'),
+                    buildPdfHeader('Consumo'),
+                  ]
+                ),
+                ..._leituras.map((item) => pw.TableRow(
+                  children: [
+                    buildPdfCell(item['data_formatada']?.toString() ?? '-'),
+                    buildPdfCell(item['bloco']?.toString() ?? '-'),
+                    buildPdfCell(item['unidade']?.toString() ?? '-'),
+                    buildPdfChip(item['tipo_medidor']?.toString() ?? '-'),
+                    buildPdfCell(_formatarMedicao(item['valor_lido'])),
+                    buildPdfCell(_formatarMedicao(item['consumo'])),
+                  ]
+                ))
+              ]
             ),
           ];
         },
