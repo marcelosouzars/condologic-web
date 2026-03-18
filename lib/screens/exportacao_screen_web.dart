@@ -161,9 +161,9 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   void _exportarCSV() {
     if (_leituras.isEmpty) return;
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
-    List<List<dynamic>> rows = [["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura", "Consumo m3", "Status"]];
+    List<List<dynamic>> rows = [["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura Anterior", "Leitura Atual", "Consumo m3", "Faturado R\$", "Status"]];
     for (var row in _leituras) {
-      rows.add([nomeCond, row['data_formatada'] ?? '-', row['bloco'] ?? '-', row['unidade'] ?? '-', row['tipo_medidor'].toString().toUpperCase(), _formatarMedicao(row['valor_lido']), _formatarMedicao(row['consumo']), row['status_leitura'] ?? 'Concluído']);
+      rows.add([nomeCond, row['data_formatada'] ?? '-', row['bloco'] ?? '-', row['unidade'] ?? '-', row['tipo_medidor'].toString().toUpperCase(), _formatarMedicao(row['leitura_anterior']), _formatarMedicao(row['valor_lido']), _formatarMedicao(row['consumo']), _formatarMoeda(row['valor_total_faturado']), row['status_leitura'] ?? 'Concluído']);
     }
     String csv = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
     final bytes = [239, 187, 191] + utf8.encode(csv); 
@@ -192,8 +192,10 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       xml.writeln('      <Bloco>${_escaparXML(l['bloco'] ?? '')}</Bloco>');
       xml.writeln('      <Unidade>${_escaparXML(l['unidade'] ?? '')}</Unidade>');
       xml.writeln('      <TipoMedidor>${_escaparXML(l['tipo_medidor'].toString().toUpperCase())}</TipoMedidor>');
+      xml.writeln('      <LeituraAnterior>${_formatarMedicao(l['leitura_anterior'])}</LeituraAnterior>');
       xml.writeln('      <ValorLido>${_formatarMedicao(l['valor_lido'])}</ValorLido>');
       xml.writeln('      <Consumo>${_formatarMedicao(l['consumo'])}</Consumo>');
+      xml.writeln('      <Faturado>${_formatarMoeda(l['valor_total_faturado'])}</Faturado>');
       xml.writeln('    </Leitura>');
     }
     xml.writeln('  </Registros>');
@@ -209,13 +211,20 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     if (_leituras.isEmpty) return;
     final doc = pw.Document();
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
+    final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+    final periodoStr = "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} a ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}";
+
+    double totalFaturado = 0.0;
+    for (var l in _leituras) {
+      totalFaturado += double.tryParse(l['valor_total_faturado']?.toString() ?? '0') ?? 0.0;
+    }
     
     pw.Widget buildPdfHeader(String text) {
-      return pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)));
+      return pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: pw.Text(text, style: pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)));
     }
 
-    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft}) {
-      return pw.Container(alignment: alignment, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
+    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft, bool isBold = false, PdfColor textColor = PdfColors.black}) {
+      return pw.Container(alignment: alignment, padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(text, style: pw.TextStyle(fontSize: 7, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: textColor)));
     }
 
     pw.Widget buildPdfChip(String tipo) {
@@ -226,29 +235,40 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))), child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)))
+        padding: const pw.EdgeInsets.all(2),
+        child: pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2), decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3))), child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 6, fontWeight: pw.FontWeight.bold)))
       );
     }
 
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
+        margin: const pw.EdgeInsets.all(24),
         build: (pw.Context context) {
           return [
-            pw.Header(level: 0, child: pw.Text("Extrato de Leituras para Integração", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold))),
-            pw.Text("Condomínio: $nomeCond"),
-            pw.SizedBox(height: 20),
+            pw.Header(level: 0, child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text("Extrato de Leituras para Integração", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+              pw.Text(nomeCond, style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+            ])),
+            pw.SizedBox(height: 5),
+            pw.Text("Período analisado: $periodoStr", style: pw.TextStyle(fontSize: 10)),
+            pw.SizedBox(height: 15),
             
             pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey300),
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(1.7), 1: const pw.FlexColumnWidth(1.0), 2: const pw.FlexColumnWidth(1.2),
+                3: const pw.FlexColumnWidth(1.5), 4: const pw.FlexColumnWidth(1.2), 5: const pw.FlexColumnWidth(1.2),
+                6: const pw.FlexColumnWidth(1.3), 7: const pw.FlexColumnWidth(1.5),
+              },
               children: [
                 pw.TableRow(
+                  repeat: true,
                   decoration: const pw.BoxDecoration(color: PdfColors.blue800),
                   children: [
-                    buildPdfHeader('Data/Hora'), buildPdfHeader('Bloco'), buildPdfHeader('Unidade'),
-                    buildPdfHeader('Medidor'), buildPdfHeader('Leitura'), buildPdfHeader('Consumo'),
+                    buildPdfHeader('Data/Hora'), buildPdfHeader('Bloco'), buildPdfHeader('Unid.'),
+                    buildPdfHeader('Medidor'), buildPdfHeader('Ant.'), buildPdfHeader('Atual'),
+                    buildPdfHeader('Cons.(m³)'), buildPdfHeader('Faturado(R\$)'),
                   ]
                 ),
                 ..._leituras.map((item) => pw.TableRow(
@@ -257,17 +277,34 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
                     buildPdfCell(item['bloco']?.toString() ?? '-'),
                     buildPdfCell(item['unidade']?.toString() ?? '-'),
                     buildPdfChip(item['tipo_medidor']?.toString() ?? '-'),
+                    buildPdfCell(_formatarMedicao(item['leitura_anterior'])),
                     buildPdfCell(_formatarMedicao(item['valor_lido'])),
                     buildPdfCell(_formatarMedicao(item['consumo'])),
+                    buildPdfCell("R\$ ${_formatarMoeda(item['valor_total_faturado'])}"),
                   ]
-                ))
+                )),
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    buildPdfCell(''), buildPdfCell(''), buildPdfCell(''), buildPdfCell(''),
+                    buildPdfCell(''), buildPdfCell(''), 
+                    buildPdfCell('TOTAL GERAL:', alignment: pw.Alignment.centerRight, isBold: true),
+                    buildPdfCell("R\$ ${_formatarMoeda(totalFaturado)}", isBold: true, textColor: PdfColors.green800),
+                  ]
+                )
               ]
             ),
+            pw.SizedBox(height: 15),
+            pw.Divider(thickness: 0.5),
+            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text("Gerado em: $dataGeracao", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              pw.Text("Total de registros exibidos: ${_leituras.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8))
+            ])
           ];
         },
       ),
     );
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => doc.save(), name: "Exportacao_CondoLogic");
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => doc.save(), name: "Exportacao_CondoLogic_Faturamento");
   }
 
   @override

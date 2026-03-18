@@ -58,7 +58,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     return v.toStringAsFixed(2).replaceAll('.', ',');
   }
 
-  // --- HELPERS PARA A NOVA TABELA CUSTOMIZADA ---
   Widget _buildHeaderCell(String text, {int flex = 1, Color? color}) {
     return Expanded(
       flex: flex,
@@ -293,10 +292,13 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       final url = html.Url.createObjectUrlFromBlob(blob);
       final anchor = html.AnchorElement(href: url)..setAttribute("download", "Consumo_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx")..click();
       html.Url.revokeObjectUrl(url);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Planilha Excel (.xlsx) baixada com sucesso!'), backgroundColor: Colors.green[700]));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Planilha baixada!'), backgroundColor: Colors.green[700]));
     }
   }
 
+  // ==============================================================
+  // O NOVO GERADOR DE PDF A4 RETRATO COM SOMA TOTAL E CABEÇALHOS REPETIDOS
+  // ==============================================================
   Future<void> _imprimirPDF() async {
     if (_leiturasFiltradas.isEmpty) return;
     final doc = pw.Document();
@@ -304,12 +306,26 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
     final periodoStr = "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} a ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}";
 
-    pw.Widget buildPdfHeader(String text) {
-      return pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)));
+    // Cálculo do Total Faturado
+    double totalFaturado = 0.0;
+    for (var l in _leiturasFiltradas) {
+      totalFaturado += double.tryParse(l['valor_total_faturado']?.toString() ?? '0') ?? 0.0;
     }
 
-    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft}) {
-      return pw.Container(alignment: alignment, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
+    pw.Widget buildPdfHeader(String text) {
+      return pw.Container(
+        alignment: pw.Alignment.centerLeft,
+        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: pw.Text(text, style: pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+      );
+    }
+
+    pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft, bool isBold = false, PdfColor textColor = PdfColors.black}) {
+      return pw.Container(
+        alignment: alignment,
+        padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: pw.Text(text, style: pw.TextStyle(fontSize: 7, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: textColor)),
+      );
     }
 
     pw.Widget buildPdfChip(String tipo) {
@@ -320,29 +336,53 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))), child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)))
+        padding: const pw.EdgeInsets.all(2),
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3))),
+          child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 6, fontWeight: pw.FontWeight.bold))
+        )
       );
     }
 
     doc.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape, 
-        margin: const pw.EdgeInsets.all(32),
+        pageFormat: PdfPageFormat.a4, // Agora em Folha A4 Retrato Padrão
+        margin: const pw.EdgeInsets.all(24),
         build: (pw.Context context) {
           return [
-            pw.Header(level: 0, child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-              pw.Text("Relatório de Consumo e Faturamento", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-              pw.Text(nomeCond, style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
-            ])),
-            pw.SizedBox(height: 10),
-            pw.Text("Período analisado: $periodoStr", style: pw.TextStyle(fontSize: 12)),
-            pw.Text("Filtros aplicados: Bloco: ${_selectedBloco?['nome'] ?? 'Todos'} | Andar: ${_selectedAndar ?? 'Todos'} | Unidade: ${_selectedUnidade?['identificacao'] ?? 'Todas'}", style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-            pw.SizedBox(height: 20),
+            pw.Header(
+              level: 0, 
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, 
+                children: [
+                  pw.Text("Relatório de Consumo e Faturamento", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+                  pw.Text(nomeCond, style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+                ]
+              )
+            ),
+            pw.SizedBox(height: 5),
+            pw.Text("Período analisado: $periodoStr", style: pw.TextStyle(fontSize: 10)),
+            pw.Text("Filtros aplicados: Bloco: ${_selectedBloco?['nome'] ?? 'Todos'} | Andar: ${_selectedAndar ?? 'Todos'} | Unidade: ${_selectedUnidade?['identificacao'] ?? 'Todas'}", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            pw.SizedBox(height: 15),
+            
             pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey300),
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              // Pesos para caber bonitinho na A4 Retrato
+              columnWidths: {
+                0: const pw.FlexColumnWidth(1.7), // Data
+                1: const pw.FlexColumnWidth(1.0), // Bloco
+                2: const pw.FlexColumnWidth(1.2), // Unidade
+                3: const pw.FlexColumnWidth(1.5), // Medidor
+                4: const pw.FlexColumnWidth(1.2), // Ant.
+                5: const pw.FlexColumnWidth(1.2), // Atual
+                6: const pw.FlexColumnWidth(1.3), // Consumo
+                7: const pw.FlexColumnWidth(1.5), // Faturado
+              },
               children: [
+                // O repeat: true FAZ A MÁGICA DE REPETIR O CABEÇALHO NA QUEBRA DE PÁGINA
                 pw.TableRow(
+                  repeat: true,
                   decoration: const pw.BoxDecoration(color: PdfColors.blue800),
                   children: [
                     buildPdfHeader('Data/Hora'), buildPdfHeader('Bloco'), buildPdfHeader('Unid.'),
@@ -361,15 +401,30 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                     buildPdfCell(_formatarMedicao(item['consumo'])),
                     buildPdfCell("R\$ ${_formatarMoeda(item['valor_total_faturado'])}"),
                   ]
-                ))
+                )),
+                // ==========================================
+                // NOVA LINHA DE SOMATÓRIO TOTAL NO FINAL
+                // ==========================================
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    buildPdfCell(''), buildPdfCell(''), buildPdfCell(''), buildPdfCell(''),
+                    buildPdfCell(''), buildPdfCell(''), 
+                    buildPdfCell('TOTAL GERAL:', alignment: pw.Alignment.centerRight, isBold: true),
+                    buildPdfCell("R\$ ${_formatarMoeda(totalFaturado)}", isBold: true, textColor: PdfColors.green800),
+                  ]
+                )
               ]
             ),
-            pw.SizedBox(height: 20),
-            pw.Divider(),
-            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-              pw.Text("Gerado em: $dataGeracao", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
-              pw.Text("Total de registros exibidos: ${_leiturasFiltradas.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))
-            ])
+            pw.SizedBox(height: 15),
+            pw.Divider(thickness: 0.5),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, 
+              children: [
+                pw.Text("Gerado em: $dataGeracao", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+                pw.Text("Total de registros exibidos: ${_leiturasFiltradas.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8))
+              ]
+            )
           ];
         },
       ),
@@ -402,7 +457,9 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                       child: DropdownButtonFormField<int>(
                         value: _selectedTenantId,
                         decoration: const InputDecoration(labelText: '1. Condomínio', border: OutlineInputBorder(), prefixIcon: Icon(Icons.apartment)),
-                        items: _condominios.map<DropdownMenuItem<int>>((item) => DropdownMenuItem<int>(value: item['id'], child: Text(item['nome']))).toList(),
+                        items: _condominios.map<DropdownMenuItem<int>>((item) {
+                          return DropdownMenuItem<int>(value: item['id'], child: Text(item['nome']));
+                        }).toList(),
                         onChanged: (val) {
                           setState(() { _selectedTenantId = val; _jaBuscou = false; });
                           _carregarBlocos(val!);
@@ -529,9 +586,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       child: Column(
                         children: [
-                          // ==========================================
-                          // CABEÇALHO DA TABELA (AGORA FICA FIXO!)
-                          // ==========================================
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                             decoration: BoxDecoration(color: Colors.blue[50], borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
@@ -548,9 +602,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                             ),
                           ),
                           const Divider(height: 1, thickness: 1),
-                          // ==========================================
-                          // CORPO DA TABELA (APENAS ESTA PARTE ROLA!)
-                          // ==========================================
                           Expanded(
                             child: ListView.separated(
                               itemCount: _leiturasFiltradas.length,
