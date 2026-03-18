@@ -37,6 +37,19 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     _carregarCondominios();
   }
 
+  // MÁSCARAS DE FORMATAÇÃO BRASILEIRA (3 casas para medição, 2 para dinheiro)
+  String _formatarMedicao(dynamic valor) {
+    if (valor == null) return '0,000';
+    double v = double.tryParse(valor.toString()) ?? 0.0;
+    return v.toStringAsFixed(3).replaceAll('.', ',');
+  }
+
+  String _formatarMoeda(dynamic valor) {
+    if (valor == null) return '0,00';
+    double v = double.tryParse(valor.toString()) ?? 0.0;
+    return v.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
   Future<void> _carregarCondominios() async {
     try {
       final dados = await _apiService.getCondominios();
@@ -114,7 +127,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
 
     List<List<dynamic>> rows = [];
-    rows.add(["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura", "Status"]);
+    rows.add(["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura", "Consumo m3", "Status"]);
 
     for (var row in _leituras) {
       rows.add([
@@ -123,7 +136,8 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
         row['bloco'] ?? '-',
         row['unidade'] ?? '-',
         row['tipo_medidor'].toString().toUpperCase(),
-        row['valor_lido'] ?? '0',
+        _formatarMedicao(row['valor_lido']),
+        _formatarMedicao(row['consumo']),
         row['status_leitura'] ?? 'Concluído'
       ]);
     }
@@ -162,7 +176,8 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       xml.writeln('      <Bloco>${_escaparXML(l['bloco'] ?? '')}</Bloco>');
       xml.writeln('      <Unidade>${_escaparXML(l['unidade'] ?? '')}</Unidade>');
       xml.writeln('      <TipoMedidor>${_escaparXML(l['tipo_medidor'].toString().toUpperCase())}</TipoMedidor>');
-      xml.writeln('      <ValorLido>${l['valor_lido']}</ValorLido>');
+      xml.writeln('      <ValorLido>${_formatarMedicao(l['valor_lido'])}</ValorLido>');
+      xml.writeln('      <Consumo>${_formatarMedicao(l['consumo'])}</Consumo>');
       xml.writeln('    </Leitura>');
     }
 
@@ -200,13 +215,14 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
               data: <List<String>>[
-                <String>['Data/Hora', 'Bloco', 'Unidade', 'Medidor', 'Leitura'],
+                <String>['Data/Hora', 'Bloco', 'Unidade', 'Medidor', 'Leitura', 'Consumo'],
                 ..._leituras.map((item) => [
                   item['data_formatada'].toString(),
                   item['bloco'].toString(),
                   item['unidade'].toString(),
                   item['tipo_medidor'].toString().toUpperCase(),
-                  item['valor_lido'].toString()
+                  _formatarMedicao(item['valor_lido']),
+                  _formatarMedicao(item['consumo'])
                 ])
               ],
             ),

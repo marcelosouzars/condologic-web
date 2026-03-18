@@ -50,6 +50,19 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     _carregarCondominios();
   }
 
+  // MÁSCARAS DE FORMATAÇÃO BRASILEIRA (3 casas para medição, 2 para dinheiro)
+  String _formatarMedicao(dynamic valor) {
+    if (valor == null) return '0,000';
+    double v = double.tryParse(valor.toString()) ?? 0.0;
+    return v.toStringAsFixed(3).replaceAll('.', ',');
+  }
+
+  String _formatarMoeda(dynamic valor) {
+    if (valor == null) return '0,00';
+    double v = double.tryParse(valor.toString()) ?? 0.0;
+    return v.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
   // ==============================================================
   // 1. CARREGAMENTOS EM CASCATA E ORDENAÇÃO INTELIGENTE
   // ==============================================================
@@ -137,7 +150,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
 
-      // PLANO A: Tenta buscar com as datas (Caso o backend esteja atualizado)
       List<dynamic> dados = await _apiService.getLeituras(
         _selectedTenantId!, 
         dtInicio: dtInicioStr, 
@@ -145,8 +157,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         blocoId: _selectedBloco?['id']
       );
 
-      // PLANO B: Se vier vazio, o backend antigo não entendeu a data e bloqueou.
-      // Buscamos TODOS os dados sem data e o próprio aplicativo filtra localmente!
       if (dados.isEmpty) {
          dados = await _apiService.getLeituras(_selectedTenantId!, blocoId: _selectedBloco?['id']);
       }
@@ -170,7 +180,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
         
-        // 1. FILTRO DE DATA LOCAL (Para garantir que o Plano B funcione com precisão)
         bool passaData = true;
         try {
           String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
@@ -189,9 +198,8 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
               passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
             }
           }
-        } catch (_) {} // Se a data falhar na conversão, deixa passar para não esconder dados à toa
+        } catch (_) {} 
 
-        // 2. FILTRO DE BLOCO
         bool passaBloco = true;
         if (_selectedBloco != null) {
           String blocoLeitura = (leitura['bloco'] ?? leitura['bloco_nome'] ?? '').toString().trim().toLowerCase();
@@ -199,7 +207,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
           passaBloco = blocoLeitura == blocoSelecionado;
         }
         
-        // 3. FILTRO DE ANDAR
         bool passaAndar = true;
         String unidLeitura = (leitura['unidade'] ?? leitura['identificacao'] ?? '').toString().trim().toLowerCase();
         
@@ -211,7 +218,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
           passaAndar = unidsDoAndar.contains(unidLeitura);
         }
 
-        // 4. FILTRO DE UNIDADE
         bool passaUnidade = true;
         if (_selectedUnidade != null) {
           passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
@@ -284,10 +290,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         TextCellValue(row['bloco']?.toString() ?? '-'),
         TextCellValue(row['unidade']?.toString() ?? '-'),
         TextCellValue(row['tipo_medidor']?.toString().toUpperCase() ?? '-'),
-        TextCellValue(row['leitura_anterior']?.toString() ?? '0'),
-        TextCellValue(row['valor_lido']?.toString() ?? '0'),
-        TextCellValue(row['consumo']?.toString() ?? '0'),
-        TextCellValue(row['valor_total_faturado']?.toString() ?? '0.00'),
+        TextCellValue(_formatarMedicao(row['leitura_anterior'])),
+        TextCellValue(_formatarMedicao(row['valor_lido'])),
+        TextCellValue(_formatarMedicao(row['consumo'])),
+        TextCellValue(_formatarMoeda(row['valor_total_faturado'])),
       ]);
     }
 
@@ -347,10 +353,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                   item['bloco']?.toString() ?? '-',
                   item['unidade']?.toString() ?? '-',
                   item['tipo_medidor']?.toString().toUpperCase() ?? '-',
-                  item['leitura_anterior']?.toString() ?? '0',
-                  item['valor_lido']?.toString() ?? '0',
-                  item['consumo']?.toString() ?? '0',
-                  "R\$ ${item['valor_total_faturado']?.toString() ?? '0.00'}"
+                  _formatarMedicao(item['leitura_anterior']),
+                  _formatarMedicao(item['valor_lido']),
+                  _formatarMedicao(item['consumo']),
+                  "R\$ ${_formatarMoeda(item['valor_total_faturado'])}"
                 ])
               ],
             ),
@@ -592,10 +598,10 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                                   backgroundColor: (l['tipo_medidor']?.toString().toLowerCase() == 'gas' || l['tipo_medidor']?.toString().toLowerCase() == 'gás') ? Colors.orange : Colors.blue[600],
                                   padding: EdgeInsets.zero,
                                 )),
-                                DataCell(Text(l['leitura_anterior']?.toString() ?? '0')),
-                                DataCell(Text(l['valor_lido']?.toString() ?? '0', style: const TextStyle(fontWeight: FontWeight.bold))),
-                                DataCell(Text('${l['consumo']?.toString() ?? '0'} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
-                                DataCell(Text('R\$ ${l['valor_total_faturado']?.toString() ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
+                                DataCell(Text(_formatarMedicao(l['leitura_anterior']))),
+                                DataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold))),
+                                DataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
+                                DataCell(Text('R\$ ${_formatarMoeda(l['valor_total_faturado'])}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
                               ]);
                             }).toList(),
                           ),
