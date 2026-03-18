@@ -37,7 +37,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     _carregarCondominios();
   }
 
-  // MÁSCARAS DE FORMATAÇÃO BRASILEIRA (3 casas para medição, 2 para dinheiro)
   String _formatarMedicao(dynamic valor) {
     if (valor == null) return '0,000';
     double v = double.tryParse(valor.toString()) ?? 0.0;
@@ -67,94 +66,113 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   }
 
   Future<void> _selecionarPeriodo() async {
-    DateTimeRange? picked = await showDateRangePicker(
+    DateTime inicioTemp = _dataSelecionada.start;
+    DateTime fimTemp = _dataSelecionada.end;
+
+    await showDialog(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-      initialDateRange: _dataSelecionada,
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(
-            primaryColor: Colors.blue[900],
-            colorScheme: ColorScheme.light(primary: Colors.blue[900]!),
-            buttonTheme: const ButtonThemeData(textTheme: ButtonTextTheme.primary),
-          ),
-          child: child!,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              title: Row(
+                children: [
+                  Icon(Icons.date_range, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  Text("Selecionar Período", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Defina a data inicial e final para o relatório:", style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 25),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            if (picked != null) setStateModal(() => inicioTemp = picked);
+                          },
+                          child: InputDecorator(decoration: const InputDecoration(labelText: "Data Inicial", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(inicioTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      const Icon(Icons.arrow_forward, color: Colors.grey),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            if (picked != null) setStateModal(() => fimTemp = picked);
+                          },
+                          child: InputDecorator(decoration: const InputDecoration(labelText: "Data Final", border: OutlineInputBorder(), prefixIcon: Icon(Icons.event, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(fimTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCELAR", style: TextStyle(color: Colors.red))),
+                ElevatedButton(
+                  onPressed: () {
+                    if (fimTemp.isBefore(inicioTemp)) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A Data Final não pode ser anterior à Inicial."), backgroundColor: Colors.red));
+                      return;
+                    }
+                    setState(() => _dataSelecionada = DateTimeRange(start: inicioTemp, end: fimTemp));
+                    Navigator.pop(ctx);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                  child: const Text("CONFIRMAR DATAS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          },
         );
       },
     );
-
-    if (picked != null && picked != _dataSelecionada) {
-      setState(() => _dataSelecionada = picked);
-    }
   }
 
   Future<void> _buscarDadosParaExportacao() async {
     if (_selectedTenantId == null) return;
     setState(() => _isLoading = true);
-    
     try {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-
       final dados = await _apiService.getLeituras(_selectedTenantId!, dtInicio: dtInicioStr, dtFim: dtFimStr);
-      
       if (mounted) {
-        setState(() {
-          _leituras = dados;
-          _isLoading = false;
-        });
-
-        if (_leituras.isEmpty) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum dado encontrado neste período.')));
-        } else {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_leituras.length} registros prontos para exportação!'), backgroundColor: Colors.green));
-        }
+        setState(() { _leituras = dados; _isLoading = false; });
+        if (_leituras.isEmpty) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum dado encontrado.')));
+        else ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_leituras.length} registros prontos!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if(mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar dados: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
       }
     }
   }
 
-  // =========================================================
-  // EXPORTAÇÃO EXCEL (CSV com BOM)
-  // =========================================================
   void _exportarCSV() {
     if (_leituras.isEmpty) return;
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
-
-    List<List<dynamic>> rows = [];
-    rows.add(["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura", "Consumo m3", "Status"]);
-
+    List<List<dynamic>> rows = [["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura", "Consumo m3", "Status"]];
     for (var row in _leituras) {
-      rows.add([
-        nomeCond,
-        row['data_formatada'] ?? '-',
-        row['bloco'] ?? '-',
-        row['unidade'] ?? '-',
-        row['tipo_medidor'].toString().toUpperCase(),
-        _formatarMedicao(row['valor_lido']),
-        _formatarMedicao(row['consumo']),
-        row['status_leitura'] ?? 'Concluído'
-      ]);
+      rows.add([nomeCond, row['data_formatada'] ?? '-', row['bloco'] ?? '-', row['unidade'] ?? '-', row['tipo_medidor'].toString().toUpperCase(), _formatarMedicao(row['valor_lido']), _formatarMedicao(row['consumo']), row['status_leitura'] ?? 'Concluído']);
     }
-
     String csv = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
-    final bytes = [239, 187, 191] + utf8.encode(csv); // UTF-8 BOM para acentos no Excel
+    final bytes = [239, 187, 191] + utf8.encode(csv); 
     final blob = html.Blob([Uint8List.fromList(bytes)]);
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", "Exportacao_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.csv")
-      ..click();
+    final anchor = html.AnchorElement(href: url)..setAttribute("download", "Exportacao_${DateFormat('ddMMyyyy').format(DateTime.now())}.csv")..click();
     html.Url.revokeObjectUrl(url);
   }
 
-  // =========================================================
-  // EXPORTAÇÃO XML (Para Integração com Softwares de Gestão)
-  // =========================================================
   String _escaparXML(String text) {
     return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
   }
@@ -162,14 +180,12 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   void _exportarXML() {
     if (_leituras.isEmpty) return;
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
-
     StringBuffer xml = StringBuffer();
     xml.writeln('<?xml version="1.0" encoding="UTF-8"?>');
     xml.writeln('<ExportacaoCondoLogic>');
     xml.writeln('  <Condominio>${_escaparXML(nomeCond)}</Condominio>');
     xml.writeln('  <DataGeracao>${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}</DataGeracao>');
     xml.writeln('  <Registros>');
-
     for (var l in _leituras) {
       xml.writeln('    <Leitura>');
       xml.writeln('      <Data>${l['data_formatada']}</Data>');
@@ -180,65 +196,38 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       xml.writeln('      <Consumo>${_formatarMedicao(l['consumo'])}</Consumo>');
       xml.writeln('    </Leitura>');
     }
-
     xml.writeln('  </Registros>');
     xml.writeln('</ExportacaoCondoLogic>');
-
     final bytes = utf8.encode(xml.toString());
     final blob = html.Blob([Uint8List.fromList(bytes)], 'application/xml');
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", "Exportacao_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.xml")
-      ..click();
+    final anchor = html.AnchorElement(href: url)..setAttribute("download", "Exportacao_${DateFormat('ddMMyyyy').format(DateTime.now())}.xml")..click();
     html.Url.revokeObjectUrl(url);
   }
 
-  // =========================================================
-  // EXPORTAÇÃO PDF
-  // =========================================================
   Future<void> _imprimirPDF() async {
     if (_leituras.isEmpty) return;
     final doc = pw.Document();
     final nomeCond = _condominios.firstWhere((c) => c['id'] == _selectedTenantId, orElse: () => {'nome': 'Condominio'})['nome'];
     
-    // Helpers para formatar as células customizadas do PDF (CORRIGIDO)
     pw.Widget buildPdfHeader(String text) {
-      return pw.Container(
-        alignment: pw.Alignment.centerLeft,
-        padding: const pw.EdgeInsets.all(6),
-        child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
-      );
+      return pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)));
     }
 
     pw.Widget buildPdfCell(String text, {pw.Alignment alignment = pw.Alignment.centerLeft}) {
-      return pw.Container(
-        alignment: alignment,
-        padding: const pw.EdgeInsets.all(6),
-        child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
-      );
+      return pw.Container(alignment: alignment, padding: const pw.EdgeInsets.all(6), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
     }
 
     pw.Widget buildPdfChip(String tipo) {
       PdfColor corFundo = PdfColors.blue600;
       String texto = tipo.toUpperCase();
-      
-      if (tipo.toLowerCase().contains('quente')) {
-        corFundo = PdfColors.red600;
-      } else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) {
-        corFundo = PdfColors.orange600;
-      }
+      if (tipo.toLowerCase().contains('quente')) corFundo = PdfColors.red600;
+      else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) corFundo = PdfColors.orange600;
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
         padding: const pw.EdgeInsets.all(4),
-        child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: pw.BoxDecoration(
-            color: corFundo,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-          ),
-          child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
-        )
+        child: pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))), child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)))
       );
     }
 
@@ -258,12 +247,8 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.blue800),
                   children: [
-                    buildPdfHeader('Data/Hora'),
-                    buildPdfHeader('Bloco'),
-                    buildPdfHeader('Unidade'),
-                    buildPdfHeader('Medidor'),
-                    buildPdfHeader('Leitura'),
-                    buildPdfHeader('Consumo'),
+                    buildPdfHeader('Data/Hora'), buildPdfHeader('Bloco'), buildPdfHeader('Unidade'),
+                    buildPdfHeader('Medidor'), buildPdfHeader('Leitura'), buildPdfHeader('Consumo'),
                   ]
                 ),
                 ..._leituras.map((item) => pw.TableRow(
@@ -307,9 +292,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
                   child: DropdownButtonFormField<int>(
                     value: _selectedTenantId,
                     decoration: const InputDecoration(labelText: 'Selecione o Condomínio', border: OutlineInputBorder(), prefixIcon: Icon(Icons.apartment)),
-                    items: _condominios.map<DropdownMenuItem<int>>((item) {
-                      return DropdownMenuItem<int>(value: item['id'], child: Text(item['nome']));
-                    }).toList(),
+                    items: _condominios.map<DropdownMenuItem<int>>((item) => DropdownMenuItem<int>(value: item['id'], child: Text(item['nome']))).toList(),
                     onChanged: (val) => setState(() => _selectedTenantId = val),
                   ),
                 ),
@@ -353,18 +336,9 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildExportCard(
-                      icon: Icons.table_chart, color: Colors.green, title: "Planilha Excel (CSV)",
-                      subtitle: "Para edição manual ou filtros rápidos.", onTap: _exportarCSV
-                    ),
-                    _buildExportCard(
-                      icon: Icons.code, color: Colors.orange, title: "Arquivo XML",
-                      subtitle: "Para integração direta com ERPs e contabilidade.", onTap: _exportarXML
-                    ),
-                    _buildExportCard(
-                      icon: Icons.picture_as_pdf, color: Colors.red, title: "Documento PDF",
-                      subtitle: "Para impressão e arquivo físico.", onTap: _imprimirPDF
-                    ),
+                    _buildExportCard(icon: Icons.table_chart, color: Colors.green, title: "Planilha Excel (CSV)", subtitle: "Para edição manual ou filtros rápidos.", onTap: _exportarCSV),
+                    _buildExportCard(icon: Icons.code, color: Colors.orange, title: "Arquivo XML", subtitle: "Para integração direta com ERPs e contabilidade.", onTap: _exportarXML),
+                    _buildExportCard(icon: Icons.picture_as_pdf, color: Colors.red, title: "Documento PDF", subtitle: "Para impressão e arquivo físico.", onTap: _imprimirPDF),
                   ],
                 ),
               ],

@@ -36,7 +36,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   String? _selectedAndar;
   Map<String, dynamic>? _selectedUnidade;
   
-  // --- FILTRO DE DATA (Padrão: 1º dia do mês atual até hoje) ---
+  // --- FILTRO DE DATA ---
   DateTimeRange _dataSelecionada = DateTimeRange(
     start: DateTime(DateTime.now().year, DateTime.now().month, 1),
     end: DateTime.now(),
@@ -50,7 +50,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     _carregarCondominios();
   }
 
-  // MÁSCARAS DE FORMATAÇÃO BRASILEIRA (3 casas para medição, 2 para dinheiro)
   String _formatarMedicao(dynamic valor) {
     if (valor == null) return '0,000';
     double v = double.tryParse(valor.toString()) ?? 0.0;
@@ -63,10 +62,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     return v.toStringAsFixed(2).replaceAll('.', ',');
   }
 
-  // ==============================================================
-  // 1. CARREGAMENTOS EM CASCATA E ORDENAÇÃO INTELIGENTE
-  // ==============================================================
-  
   Future<void> _carregarCondominios() async {
     try {
       final dados = await _apiService.getCondominios();
@@ -108,20 +103,15 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
       if (mounted) {
         setState(() {
           _unidades = dados;
-          
           final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
-          
           andaresUnicos.sort((a, b) {
             if (a.toLowerCase() == 'térreo') return -1;
             if (b.toLowerCase() == 'térreo') return 1;
-            
             final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
             final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
-            
             if (numA != null && numB != null) return numA.compareTo(numB);
             return a.compareTo(b); 
           });
-          
           _andares = andaresUnicos;
           _selectedAndar = null;
           _selectedUnidade = null;
@@ -132,41 +122,17 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     }
   }
 
-  // ==============================================================
-  // 2. BUSCA BLINDADA (PLANO A e PLANO B) + FILTRO LOCAL
-  // ==============================================================
-
   Future<void> _buscarRelatorio() async {
     if (_selectedTenantId == null) return;
-    
-    setState(() {
-      _isLoading = true;
-      _jaBuscou = true;
-      _leiturasBrutas = [];
-      _leiturasFiltradas = [];
-    });
-    
+    setState(() { _isLoading = true; _jaBuscou = true; _leiturasBrutas = []; _leiturasFiltradas = []; });
     try {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-
-      List<dynamic> dados = await _apiService.getLeituras(
-        _selectedTenantId!, 
-        dtInicio: dtInicioStr, 
-        dtFim: dtFimStr,
-        blocoId: _selectedBloco?['id']
-      );
-
-      if (dados.isEmpty) {
-         dados = await _apiService.getLeituras(_selectedTenantId!, blocoId: _selectedBloco?['id']);
-      }
+      List<dynamic> dados = await _apiService.getLeituras(_selectedTenantId!, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+      if (dados.isEmpty) dados = await _apiService.getLeituras(_selectedTenantId!, blocoId: _selectedBloco?['id']);
       
       if (mounted) {
-        setState(() {
-          _leiturasBrutas = dados;
-          _aplicarFiltrosLocais(); 
-          _isLoading = false;
-        });
+        setState(() { _leiturasBrutas = dados; _aplicarFiltrosLocais(); _isLoading = false; });
       }
     } catch (e) {
       if(mounted) {
@@ -179,7 +145,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   void _aplicarFiltrosLocais() {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
-        
         bool passaData = true;
         try {
           String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
@@ -191,7 +156,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
             } else if (dataStr.contains('-')) {
               dtLeitura = DateTime.tryParse(dataStr);
             }
-            
             if (dtLeitura != null) {
               DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
               DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
@@ -203,25 +167,18 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         bool passaBloco = true;
         if (_selectedBloco != null) {
           String blocoLeitura = (leitura['bloco'] ?? leitura['bloco_nome'] ?? '').toString().trim().toLowerCase();
-          String blocoSelecionado = _selectedBloco!['nome'].toString().trim().toLowerCase();
-          passaBloco = blocoLeitura == blocoSelecionado;
+          passaBloco = blocoLeitura == _selectedBloco!['nome'].toString().trim().toLowerCase();
         }
         
         bool passaAndar = true;
         String unidLeitura = (leitura['unidade'] ?? leitura['identificacao'] ?? '').toString().trim().toLowerCase();
-        
         if (_selectedAndar != null && _selectedUnidade == null) {
-          List<String> unidsDoAndar = _unidades
-              .where((u) => (u['andar']?.toString().trim().toLowerCase() ?? 'térreo') == _selectedAndar!.trim().toLowerCase())
-              .map((u) => (u['identificacao'] ?? '').toString().trim().toLowerCase())
-              .toList();
+          List<String> unidsDoAndar = _unidades.where((u) => (u['andar']?.toString().trim().toLowerCase() ?? 'térreo') == _selectedAndar!.trim().toLowerCase()).map((u) => (u['identificacao'] ?? '').toString().trim().toLowerCase()).toList();
           passaAndar = unidsDoAndar.contains(unidLeitura);
         }
 
         bool passaUnidade = true;
-        if (_selectedUnidade != null) {
-          passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
-        }
+        if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
 
         return passaData && passaBloco && passaAndar && passaUnidade;
       }).toList();
@@ -229,38 +186,99 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
   }
 
   // ==============================================================
-  // 3. COMPONENTES VISUAIS (SELETORES)
+  // O NOVO CALENDÁRIO CUSTOMIZADO, COMPACTO E ELEGANTE
   // ==============================================================
-
   Future<void> _selecionarPeriodo() async {
-    DateTimeRange? picked = await showDateRangePicker(
+    DateTime inicioTemp = _dataSelecionada.start;
+    DateTime fimTemp = _dataSelecionada.end;
+
+    await showDialog(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-      initialDateRange: _dataSelecionada,
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(
-            primaryColor: Colors.blue[900],
-            colorScheme: ColorScheme.light(primary: Colors.blue[900]!),
-            buttonTheme: const ButtonThemeData(textTheme: ButtonTextTheme.primary),
-          ),
-          child: child!,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              title: Row(
+                children: [
+                  Icon(Icons.date_range, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  Text("Selecionar Período", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Defina a data inicial e final para o filtro:", style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 25),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: inicioTemp,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) setStateModal(() => inicioTemp = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(labelText: "Data Inicial", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)),
+                            child: Text(DateFormat('dd/MM/yyyy').format(inicioTemp), style: const TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      const Icon(Icons.arrow_forward, color: Colors.grey),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: fimTemp,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) setStateModal(() => fimTemp = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(labelText: "Data Final", border: OutlineInputBorder(), prefixIcon: Icon(Icons.event, size: 20)),
+                            child: Text(DateFormat('dd/MM/yyyy').format(fimTemp), style: const TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCELAR", style: TextStyle(color: Colors.red))),
+                ElevatedButton(
+                  onPressed: () {
+                    if (fimTemp.isBefore(inicioTemp)) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A Data Final não pode ser anterior à Data Inicial."), backgroundColor: Colors.red));
+                      return;
+                    }
+                    setState(() {
+                      _dataSelecionada = DateTimeRange(start: inicioTemp, end: fimTemp);
+                      _jaBuscou = false;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                  child: const Text("CONFIRMAR DATAS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          },
         );
       },
     );
-
-    if (picked != null && picked != _dataSelecionada) {
-      setState(() {
-        _dataSelecionada = picked;
-        _jaBuscou = false;
-      });
-    }
   }
-
-  // ==============================================================
-  // 4. EXPORTAÇÕES (EXCEL NATIVO / PDF)
-  // ==============================================================
 
   void _exportarExcel() {
     if (_leiturasFiltradas.isEmpty) return;
@@ -272,28 +290,17 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     excel.setDefaultSheet('Relatório Fotometria');
 
     sheetObject.appendRow([
-      TextCellValue("Condomínio"), 
-      TextCellValue("Data / Hora da Leitura"), 
-      TextCellValue("Bloco"), 
-      TextCellValue("Unidade"), 
-      TextCellValue("Tipo Medidor"), 
-      TextCellValue("Leitura Anterior (Mês Passado)"), 
-      TextCellValue("Leitura Atual (Mês Atual)"), 
-      TextCellValue("Consumo Registrado (m³)"),
-      TextCellValue("Valor Faturado (R\$)")
+      TextCellValue("Condomínio"), TextCellValue("Data / Hora da Leitura"), TextCellValue("Bloco"), 
+      TextCellValue("Unidade"), TextCellValue("Tipo Medidor"), TextCellValue("Leitura Anterior (Mês Passado)"), 
+      TextCellValue("Leitura Atual (Mês Atual)"), TextCellValue("Consumo Registrado (m³)"), TextCellValue("Valor Faturado (R\$)")
     ]);
 
     for (var row in _leiturasFiltradas) {
       sheetObject.appendRow([
-        TextCellValue(nomeCond.toString()),
-        TextCellValue(row['data_formatada']?.toString() ?? '-'),
-        TextCellValue(row['bloco']?.toString() ?? '-'),
-        TextCellValue(row['unidade']?.toString() ?? '-'),
-        TextCellValue(row['tipo_medidor']?.toString().toUpperCase() ?? '-'),
-        TextCellValue(_formatarMedicao(row['leitura_anterior'])),
-        TextCellValue(_formatarMedicao(row['valor_lido'])),
-        TextCellValue(_formatarMedicao(row['consumo'])),
-        TextCellValue(_formatarMoeda(row['valor_total_faturado'])),
+        TextCellValue(nomeCond.toString()), TextCellValue(row['data_formatada']?.toString() ?? '-'),
+        TextCellValue(row['bloco']?.toString() ?? '-'), TextCellValue(row['unidade']?.toString() ?? '-'),
+        TextCellValue(row['tipo_medidor']?.toString().toUpperCase() ?? '-'), TextCellValue(_formatarMedicao(row['leitura_anterior'])),
+        TextCellValue(_formatarMedicao(row['valor_lido'])), TextCellValue(_formatarMedicao(row['consumo'])), TextCellValue(_formatarMoeda(row['valor_total_faturado'])),
       ]);
     }
 
@@ -301,14 +308,9 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     if (fileBytes != null) {
       final blob = html.Blob([Uint8List.fromList(fileBytes)], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute("download", "Consumo_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx")
-        ..click();
+      final anchor = html.AnchorElement(href: url)..setAttribute("download", "Consumo_CondoLogic_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx")..click();
       html.Url.revokeObjectUrl(url);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Planilha Excel (.xlsx) baixada com sucesso!'), backgroundColor: Colors.green[700])
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Planilha baixada!'), backgroundColor: Colors.green[700]));
     }
   }
 
@@ -319,7 +321,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
     final periodoStr = "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} a ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}";
 
-    // Helpers para construir células no PDF (CORRIGIDO)
     pw.Widget buildPdfHeader(String text) {
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
@@ -339,22 +340,15 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
     pw.Widget buildPdfChip(String tipo) {
       PdfColor corFundo = PdfColors.blue600;
       String texto = tipo.toUpperCase();
-      
-      if (tipo.toLowerCase().contains('quente')) {
-        corFundo = PdfColors.red600;
-      } else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) {
-        corFundo = PdfColors.orange600;
-      }
+      if (tipo.toLowerCase().contains('quente')) corFundo = PdfColors.red600;
+      else if (tipo.toLowerCase().contains('gas') || tipo.toLowerCase().contains('gás')) corFundo = PdfColors.orange600;
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
         padding: const pw.EdgeInsets.all(4),
         child: pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: pw.BoxDecoration(
-            color: corFundo,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-          ),
+          decoration: pw.BoxDecoration(color: corFundo, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))),
           child: pw.Text(texto, style: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
         )
       );
@@ -366,40 +360,26 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
-            pw.Header(
-              level: 0, 
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text("Relatório de Consumo e Faturamento", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                  pw.Text(nomeCond, style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
-                ]
-              )
-            ),
+            pw.Header(level: 0, child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text("Relatório de Consumo e Faturamento", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+              pw.Text(nomeCond, style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
+            ])),
             pw.SizedBox(height: 10),
             pw.Text("Período analisado: $periodoStr", style: pw.TextStyle(fontSize: 12)),
             pw.Text("Filtros aplicados: Bloco: ${_selectedBloco?['nome'] ?? 'Todos'} | Andar: ${_selectedAndar ?? 'Todos'} | Unidade: ${_selectedUnidade?['identificacao'] ?? 'Todas'}", style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
             pw.SizedBox(height: 20),
             
-            // Construção da Tabela Customizada
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
               children: [
-                // Cabeçalho
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.blue800),
                   children: [
-                    buildPdfHeader('Data/Hora'),
-                    buildPdfHeader('Bloco'),
-                    buildPdfHeader('Unid.'),
-                    buildPdfHeader('Medidor'),
-                    buildPdfHeader('Ant.'),
-                    buildPdfHeader('Atual'),
-                    buildPdfHeader('Cons.(m³)'),
-                    buildPdfHeader('Faturado(R\$)'),
+                    buildPdfHeader('Data/Hora'), buildPdfHeader('Bloco'), buildPdfHeader('Unid.'),
+                    buildPdfHeader('Medidor'), buildPdfHeader('Ant.'), buildPdfHeader('Atual'),
+                    buildPdfHeader('Cons.(m³)'), buildPdfHeader('Faturado(R\$)'),
                   ]
                 ),
-                // Linhas
                 ..._leiturasFiltradas.map((item) => pw.TableRow(
                   children: [
                     buildPdfCell(item['data_formatada']?.toString() ?? '-'),
@@ -414,16 +394,12 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                 ))
               ]
             ),
-            
             pw.SizedBox(height: 20),
             pw.Divider(),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text("Gerado em: $dataGeracao", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
-                pw.Text("Total de registros exibidos: ${_leiturasFiltradas.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))
-              ]
-            )
+            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text("Gerado em: $dataGeracao", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+              pw.Text("Total de registros exibidos: ${_leiturasFiltradas.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))
+            ])
           ];
         },
       ),
@@ -449,7 +425,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                
                 Row(
                   children: [
                     Expanded(
@@ -473,10 +448,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                         onTap: _selecionarPeriodo,
                         child: InputDecorator(
                           decoration: const InputDecoration(labelText: '2. Período de Análise', border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_month)),
-                          child: Text(
-                            "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}",
-                            style: const TextStyle(fontSize: 16),
-                          ),
+                          child: Text("${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", style: const TextStyle(fontSize: 16)),
                         ),
                       ),
                     ),
@@ -492,11 +464,9 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 20),
-
                 Row(
                   children: [
                     Expanded(
@@ -509,17 +479,13 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                         ],
                         onChanged: (val) {
                           setState(() => _selectedBloco = val);
-                          if (val != null) {
-                            _carregarUnidadesEAndares(val['id']);
-                          } else {
-                            setState(() { _selectedAndar = null; _selectedUnidade = null; _andares = []; _unidades = []; });
-                          }
+                          if (val != null) _carregarUnidadesEAndares(val['id']);
+                          else setState(() { _selectedAndar = null; _selectedUnidade = null; _andares = []; _unidades = []; });
                           _aplicarFiltrosLocais();
                         },
                       ),
                     ),
                     const SizedBox(width: 15),
-                    
                     Expanded(
                       child: DropdownButtonFormField<String?>(
                         value: _selectedAndar,
@@ -535,7 +501,6 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                       ),
                     ),
                     const SizedBox(width: 15),
-                    
                     Expanded(
                       child: DropdownButtonFormField<Map<String, dynamic>?>(
                         value: _selectedUnidade,
@@ -550,10 +515,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                           setState(() => _selectedUnidade = val);
                           _aplicarFiltrosLocais();
                         },
-                        disabledHint: Text(
-                          _selectedAndar == null ? "Indisponível (Andar não selecionado)" : "Selecione a Unidade", 
-                          style: TextStyle(color: Colors.grey[500])
-                        ),
+                        disabledHint: Text(_selectedAndar == null ? "Indisponível (Andar não selecionado)" : "Selecione a Unidade", style: TextStyle(color: Colors.grey[500])),
                       ),
                     ),
                   ],
@@ -562,9 +524,7 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
             ),
           ),
         ),
-
         const SizedBox(height: 20),
-
         if (_leiturasFiltradas.isNotEmpty)
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -586,47 +546,16 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
               ),
             ],
           ),
-        
         const SizedBox(height: 20),
-
         Expanded(
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : !_jaBuscou 
-              ? Center( 
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.manage_search, size: 80, color: Colors.grey[300]),
-                      const SizedBox(height: 10),
-                      Text("Selecione o período e clique em BUSCAR DADOS", style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                    ],
-                  )
-                )
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.manage_search, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Selecione o período e clique em BUSCAR DADOS", style: TextStyle(color: Colors.grey[600], fontSize: 16))]))
               : _leiturasBrutas.isEmpty 
-                ? Center( 
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.event_busy, size: 80, color: Colors.grey[300]),
-                        const SizedBox(height: 10),
-                        Text("O banco de dados não retornou leituras para este condomínio.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        const Text("Certifique-se que o Bloco/Condomínio correto foi escolhido.", style: TextStyle(color: Colors.grey)),
-                      ],
-                    )
-                  )
+                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("O banco não retornou leituras para este condomínio.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 5), const Text("Certifique-se que o Bloco/Condomínio correto foi escolhido.", style: TextStyle(color: Colors.grey))]))
                 : _leiturasFiltradas.isEmpty 
-                  ? Center( 
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]),
-                          const SizedBox(height: 10),
-                          const Text("Existem leituras registradas, mas nenhuma caiu nos seus filtros (Data, Bloco ou Andar).", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                        ],
-                      )
-                    )
+                  ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Existem leituras registradas, mas nenhuma caiu nos seus filtros.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
                   : Card( 
                       elevation: 2,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -645,23 +574,15 @@ class _RelatoriosScreenWebState extends State<RelatoriosScreenWeb> {
                               DataColumn(label: Text('Faturado (R\$)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
                             ],
                             rows: _leiturasFiltradas.map((l) {
-                              // DEFINIÇÃO DA COR DO BLOCO NA TELA DO SISTEMA:
                               Color? corFundo = Colors.blue[600];
                               String tipoStr = l['tipo_medidor']?.toString().toLowerCase() ?? '';
-                              if (tipoStr.contains('quente')) {
-                                corFundo = Colors.red[600];
-                              } else if (tipoStr.contains('gas') || tipoStr.contains('gás')) {
-                                corFundo = Colors.orange;
-                              }
+                              if (tipoStr.contains('quente')) corFundo = Colors.red[600];
+                              else if (tipoStr.contains('gas') || tipoStr.contains('gás')) corFundo = Colors.orange;
 
                               return DataRow(cells: [
                                 DataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-')),
                                 DataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold))),
-                                DataCell(Chip(
-                                  label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                                  backgroundColor: corFundo,
-                                  padding: EdgeInsets.zero,
-                                )),
+                                DataCell(Chip(label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: corFundo, padding: EdgeInsets.zero)),
                                 DataCell(Text(_formatarMedicao(l['leitura_anterior']))),
                                 DataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold))),
                                 DataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),

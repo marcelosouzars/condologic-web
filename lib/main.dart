@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
-import 'screens/login_screen_web.dart'; // Ajuste o caminho se necessário
+import 'package:flutter_localizations/flutter_localizations.dart'; // PACOTE DE TRADUÇÃO
+import 'screens/login_screen_web.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,11 +15,23 @@ class CondoLogicApp extends StatelessWidget {
     return MaterialApp(
       title: 'CondoLogic Admin',
       debugShowCheckedModeBanner: false,
+      
+      // ==========================================
+      // CONFIGURAÇÃO DE IDIOMA PARA PT-BR (CALENDÁRIOS)
+      // ==========================================
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('pt', 'BR'),
+      ],
+      
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      // REMOVEMOS O 'const' DAQUI TAMBÉM:
       home: LoginScreenWeb(), 
     );
   }
