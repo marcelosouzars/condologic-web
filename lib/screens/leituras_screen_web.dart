@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data'; // <--- IMPORTAÇÃO CRUCIAL PARA O WEB
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'camera_screen.dart';
-import '../services/api_service_web.dart';
 // ATENÇÃO: Nunca importe o database_helper.dart (sqflite) no projeto WEB!
 
 class LeituraScreen extends StatefulWidget {
@@ -19,7 +19,7 @@ class LeituraScreen extends StatefulWidget {
 
 class _LeituraScreenState extends State<LeituraScreen> {
   String? _imagePath;
-  List<int>? _imageBytes; // Usamos bytes diretamente para melhor suporte no Web
+  Uint8List? _imageBytes; // <--- AGORA DECLARADO CORRETAMENTE PARA WEB
   bool _isProcessing = false;
   final String _baseUrl = "https://condologic-backend.onrender.com";
 
@@ -29,10 +29,13 @@ class _LeituraScreenState extends State<LeituraScreen> {
       MaterialPageRoute(builder: (context) => const CameraScreen()),
     );
 
-    if (resultado != null && resultado['path'] != null) {
+    if (resultado != null && resultado['path'] != null && resultado['bytes'] != null) {
       setState(() {
         _imagePath = resultado['path'];
-        _imageBytes = resultado['bytes'];
+        // Garante que a lista de bytes se converta no formato Uint8List exigido pelo Web
+        _imageBytes = resultado['bytes'] is Uint8List 
+            ? resultado['bytes'] 
+            : Uint8List.fromList(List<int>.from(resultado['bytes']));
       });
       _processarNoServidor();
     }
@@ -47,7 +50,7 @@ class _LeituraScreenState extends State<LeituraScreen> {
     setState(() => _isProcessing = true);
 
     try {
-      // 1. Decodifica e comprime a imagem (em memória, sem usar dart:io File)
+      // 1. Decodifica e comprime a imagem usando o formato rigoroso do Web
       img.Image? originalImage = img.decodeImage(_imageBytes!);
       if (originalImage == null) throw Exception("Falha ao decodificar imagem");
 
@@ -71,11 +74,9 @@ class _LeituraScreenState extends State<LeituraScreen> {
         if (response.statusCode == 200) {
           _tratarRespostaIA(response.body);
         } else {
-          // No Web, se falhar, apenas avisamos o erro. Não há banco offline (sqflite).
           _mostrarErro("Erro no servidor: ${response.statusCode}. Tente novamente.");
         }
       } catch (e) {
-        // Timeout ou queda de internet no navegador
         _mostrarErro("Falha de conexão. Verifique sua internet e tente novamente.");
       }
 
@@ -156,7 +157,6 @@ class _LeituraScreenState extends State<LeituraScreen> {
                       border: Border.all(color: Colors.blue[900]!, width: 3),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    // No Flutter Web, o NetworkImage consegue carregar URLs de blob gerados pela câmera
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(7),
                       child: Image.network(_imagePath!, fit: BoxFit.cover),
