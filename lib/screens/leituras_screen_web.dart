@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'camera_screen.dart';
-import '../services/api_service.dart';
-import '../database_helper.dart';
+import '../services/api_service_web.dart';
+// ATENÇÃO: Nunca importe o database_helper.dart (sqflite) no projeto WEB!
 
 class LeituraScreen extends StatefulWidget {
   final Map unidade;
@@ -19,38 +18,44 @@ class LeituraScreen extends StatefulWidget {
 }
 
 class _LeituraScreenState extends State<LeituraScreen> {
-  File? _imageFile;
+  String? _imagePath;
+  List<int>? _imageBytes; // Usamos bytes diretamente para melhor suporte no Web
   bool _isProcessing = false;
   final String _baseUrl = "https://condologic-backend.onrender.com";
 
   Future<void> _capturarFoto() async {
-    final String? path = await Navigator.push(
+    final Map<String, dynamic>? resultado = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const CameraScreen()),
     );
 
-    if (path != null) {
+    if (resultado != null && resultado['path'] != null) {
       setState(() {
-        _imageFile = File(path);
+        _imagePath = resultado['path'];
+        _imageBytes = resultado['bytes'];
       });
-      _processarOuSalvar(path);
+      _processarNoServidor();
     }
   }
 
-  Future<void> _processarOuSalvar(String path) async {
+  Future<void> _processarNoServidor() async {
+    if (_imageBytes == null) {
+      _mostrarErro("Nenhuma imagem para processar.");
+      return;
+    }
+
     setState(() => _isProcessing = true);
 
     try {
-      // 1. Prepara e comprime a imagem (essencial para o envio)
-      final bytes = await File(path).readAsBytes();
-      img.Image? originalImage = img.decodeImage(bytes);
+      // 1. Decodifica e comprime a imagem (em memória, sem usar dart:io File)
+      img.Image? originalImage = img.decodeImage(_imageBytes!);
       if (originalImage == null) throw Exception("Falha ao decodificar imagem");
 
       img.Image resizedImage = img.copyResize(originalImage, width: 800);
       List<int> compressedBytes = img.encodeJpg(resizedImage, quality: 80);
       String base64Image = base64Encode(compressedBytes);
 
-      // 2. TENTA ENVIAR DIRETO (Se houver internet, ele já processa agora)
+      // 2. Tenta enviar para o backend
       try {
         final response = await http.post(
           Uri.parse('$_baseUrl/api/leitura/processar-ia'),
@@ -61,37 +66,24 @@ class _LeituraScreenState extends State<LeituraScreen> {
             'tenant_id': widget.unidade['tenant_id'],
             'leitura_anterior': widget.medidor['leitura_anterior']
           }),
-        ).timeout(const Duration(seconds: 15)); // 15 segundos para tentar
+        ).timeout(const Duration(seconds: 40));
 
         if (response.statusCode == 200) {
           _tratarRespostaIA(response.body);
         } else {
-          // Se o servidor respondeu erro (ex: 500), salva offline
-          await _guardarOffline(base64Image, path);
+          // No Web, se falhar, apenas avisamos o erro. Não há banco offline (sqflite).
+          _mostrarErro("Erro no servidor: ${response.statusCode}. Tente novamente.");
         }
       } catch (e) {
-        // Se deu timeout ou erro de rede (sem sinal real), salva offline
-        print("Erro de conexão ou timeout: $e. Salvando na fila.");
-        await _guardarOffline(base64Image, path);
+        // Timeout ou queda de internet no navegador
+        _mostrarErro("Falha de conexão. Verifique sua internet e tente novamente.");
       }
 
     } catch (e) {
-      _mostrarErro("Erro ao preparar foto.");
+      _mostrarErro("Erro ao preparar foto: $e");
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
-  }
-
-  Future<void> _guardarOffline(String base64, String path) async {
-     await DatabaseHelper().salvarLeituraOffline(
-        unidadeId: widget.unidade['unidade_id'] ?? 0, 
-        medidorId: widget.medidor['id'], 
-        valor: 0.0, 
-        fotoPath: path,
-        leituraAnterior: widget.medidor['leitura_anterior'].toString(),
-        tenantId: widget.unidade['tenant_id']
-      );
-      _mostrarAvisoOffline();
   }
 
   void _tratarRespostaIA(String corpo) {
@@ -112,25 +104,6 @@ class _LeituraScreenState extends State<LeituraScreen> {
     } catch (e) {
       _mostrarSucesso("Leitura enviada! O sistema processará o valor.");
     }
-  }
-
-  void _mostrarAvisoOffline() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Row(children: [const Icon(Icons.cloud_off, color: Colors.orange), const SizedBox(width: 10), const Text("Fila de Envio")]),
-        content: const Text("O sinal oscilou ou o servidor demorou a responder. A foto foi salva e será enviada automaticamente em instantes!"),
-        actions: [
-          ElevatedButton(
-            onPressed: () { Navigator.pop(context); Navigator.pop(context, true); },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white)),
-          )
-        ],
-      ),
-    );
   }
 
   void _mostrarSucesso(String mensagem) {
@@ -175,14 +148,18 @@ class _LeituraScreenState extends State<LeituraScreen> {
           Text("Leitura Anterior: $leituraAnteriorFormatada", style: TextStyle(color: Colors.grey[700], fontSize: 16)),
           const SizedBox(height: 40),
           Center(
-            child: _imageFile == null
+            child: _imagePath == null
                 ? Icon(Icons.image_search, size: 150, color: Colors.blue[100])
                 : Container(
                     height: 180, width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 20),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.blue[900]!, width: 3),
                       borderRadius: BorderRadius.circular(10),
-                      image: DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover),
+                    ),
+                    // No Flutter Web, o NetworkImage consegue carregar URLs de blob gerados pela câmera
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(7),
+                      child: Image.network(_imagePath!, fit: BoxFit.cover),
                     ),
                   ),
           ),
