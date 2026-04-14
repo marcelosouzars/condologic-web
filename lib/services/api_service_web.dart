@@ -31,6 +31,7 @@ class ApiServiceWeb {
   // --- ALTERAR SENHA ---
   Future<void> alterarSenha(int userId, String senhaAtual, String novaSenha) async {
     final url = Uri.parse('$baseUrl/auth/alterar-senha');
+
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -118,7 +119,7 @@ class ApiServiceWeb {
 
     if (response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      return data['id']; 
+      return data['id'];
     } else {
       throw Exception('Erro ao criar bloco');
     }
@@ -134,7 +135,6 @@ class ApiServiceWeb {
     }
   }
 
-  // >>> NOVA FUNÇÃO EXCLUIR BLOCO <<<
   Future<void> excluirBloco(int blocoId, String nivelAcesso) async {
     final url = Uri.parse('$baseUrl/admin/bloco/$blocoId?nivel=$nivelAcesso');
     final response = await http.delete(url);
@@ -305,24 +305,30 @@ class ApiServiceWeb {
     return [];
   }
 
-  // ==========================================================
-  // NOVA FUNÇÃO: IMPORTAÇÃO DE HISTÓRICO (ONBOARDING)
-  // ==========================================================
-  Future<Map<String, dynamic>> importarHistorico(int tenantId, List<Map<String, dynamic>> dados) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/importacao'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'tenant_id': tenantId,
-        'dados': dados,
-      }),
-    );
+  // ==========================================
+  // NOVAS ROTAS: AUDITORIA E ALERTAS (SÍNDICO)
+  // ==========================================
+  Future<Map<String, dynamic>> getResumoAlertas(int tenantId) async {
+    final response = await http.get(Uri.parse('$baseUrl/admin/dashboard/alertas?tenant_id=$tenantId'));
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    return {'total_alertas': 0};
+  }
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
+  Future<List<dynamic>> getLeiturasAuditoria(int tenantId) async {
+    final response = await http.get(Uri.parse('$baseUrl/admin/leituras/auditoria/$tenantId'));
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Erro ao carregar lista de auditoria');
+  }
+
+  Future<void> auditarLeitura(int leituraId, String acao, String novoValor, String observacao) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/admin/leitura/auditar/$leituraId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'acao': acao, 'novo_valor': novoValor, 'observacao': observacao}),
+    );
+    if (response.statusCode != 200) {
       final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro desconhecido na importação.');
+      throw Exception(erro['error'] ?? 'Erro ao auditar a leitura');
     }
   }
 }

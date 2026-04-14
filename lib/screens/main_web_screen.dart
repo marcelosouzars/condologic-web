@@ -5,13 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+import 'dashboard_screen_web.dart'; // <--- TELA NOVA IMPORTADA AQUI
 import 'condominios_screen_web.dart';
 import 'usuarios_screen_web.dart';
 import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
 import 'exportacao_screen_web.dart';
 import 'login_screen_web.dart';
-import 'importacao_screen_web.dart'; // <--- IMPORTAÇÃO ADICIONADA AQUI
 import '../services/api_service_web.dart';
 
 class MainWebScreen extends StatefulWidget {
@@ -55,9 +55,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
 
-  // =========================================================================
-  // NOVA FUNÇÃO: MODAL PARA O PRÓPRIO USUÁRIO ALTERAR SUA SENHA
-  // =========================================================================
   void _abrirModalAlterarSenha() {
     final senhaAtualCtrl = TextEditingController();
     final novaSenhaCtrl = TextEditingController();
@@ -109,7 +106,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.grey))),
               ElevatedButton.icon(
                 onPressed: isSaving ? null : () async {
-                  // VALIDAÇÕES
                   if (senhaAtualCtrl.text.isEmpty || novaSenhaCtrl.text.isEmpty || confirmaSenhaCtrl.text.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos!"), backgroundColor: Colors.red));
                     return;
@@ -120,13 +116,10 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   }
 
                   setStateModal(() => isSaving = true);
-                  
                   try {
-                    // Chama a API para trocar a senha
                     await ApiServiceWeb().alterarSenha(_usuarioLogado!['id'], senhaAtualCtrl.text, novaSenhaCtrl.text);
-                    
                     if (mounted) {
-                      Navigator.pop(context); // Fecha o modal
+                      Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sua senha foi atualizada com sucesso!"), backgroundColor: Colors.green));
                     }
                   } catch (e) {
@@ -148,10 +141,16 @@ class _MainWebScreenState extends State<MainWebScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
+    
     int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
     
     List<NavigationRailDestination> menuItens = [
+      // >>> MENU NOVO ADICIONADO <<<
+      const NavigationRailDestination(
+        icon: Icon(Icons.dashboard_outlined),
+        selectedIcon: Icon(Icons.dashboard),
+        label: Text('Painel Inicial'),
+      ),
       const NavigationRailDestination(
         icon: Icon(Icons.apartment_outlined),
         selectedIcon: Icon(Icons.apartment),
@@ -177,21 +176,15 @@ class _MainWebScreenState extends State<MainWebScreen> {
         selectedIcon: Icon(Icons.download),
         label: Text('Exportar Dados'),
       ),
-      // <--- NOVO MENU DE IMPORTAÇÃO ADICIONADO AQUI
-      const NavigationRailDestination(
-        icon: Icon(Icons.upload_file_outlined),
-        selectedIcon: Icon(Icons.upload_file),
-        label: Text('Importar Histórico'),
-      ),
     ];
 
     List<Widget> telas = [
+      DashboardScreenWeb(usuarioLogado: _usuarioLogado), // <<< TELA NOVA ADICIONADA
       CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
       const UsuariosScreenWeb(), 
       LeiturasScreenWeb(tenantId: tenantIdAtual),
       const RelatoriosScreenWeb(),
       const ExportacaoScreenWeb(), 
-      const ImportacaoScreenWeb(), // <--- NOVA TELA ADICIONADA AQUI
     ];
 
     return Scaffold(
@@ -203,7 +196,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
-          // AQUI O BALÃO DO USUÁRIO VIROU UM BOTÃO CLICÁVEL (ActionChip)
           Center(
             child: Tooltip(
               message: "Clique para alterar sua senha",
