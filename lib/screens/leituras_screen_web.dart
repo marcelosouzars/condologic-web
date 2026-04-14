@@ -1,186 +1,140 @@
+// ==========================================>>> leituras_screen_web.dart
 import 'dart:convert';
-import 'dart:async';
-import 'dart:typed_data'; // <--- IMPORTAÇÃO CRUCIAL PARA O WEB
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img;
-import 'camera_screen.dart';
-// ATENÇÃO: Nunca importe o database_helper.dart (sqflite) no projeto WEB!
+import 'package:google_fonts/google_fonts.dart';
+import '../services/api_service_web.dart';
 
-class LeituraScreen extends StatefulWidget {
-  final Map unidade;
-  final Map medidor;
-
-  const LeituraScreen({super.key, required this.unidade, required this.medidor});
+class LeiturasScreenWeb extends StatefulWidget {
+  final int tenantId;
+  const LeiturasScreenWeb({super.key, required this.tenantId});
 
   @override
-  _LeituraScreenState createState() => _LeituraScreenState();
+  State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
 }
 
-class _LeituraScreenState extends State<LeituraScreen> {
-  String? _imagePath;
-  Uint8List? _imageBytes; // <--- AGORA DECLARADO CORRETAMENTE PARA WEB
-  bool _isProcessing = false;
-  final String _baseUrl = "https://condologic-backend.onrender.com";
+class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
+  final ApiServiceWeb _apiService = ApiServiceWeb();
+  List<dynamic> _leituras = [];
+  bool _isLoading = true;
 
-  Future<void> _capturarFoto() async {
-    final Map<String, dynamic>? resultado = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const CameraScreen()),
-    );
-
-    if (resultado != null && resultado['path'] != null && resultado['bytes'] != null) {
-      setState(() {
-        _imagePath = resultado['path'];
-        // Garante que a lista de bytes se converta no formato Uint8List exigido pelo Web
-        _imageBytes = resultado['bytes'] is Uint8List 
-            ? resultado['bytes'] 
-            : Uint8List.fromList(List<int>.from(resultado['bytes']));
-      });
-      _processarNoServidor();
-    }
+  @override
+  void initState() {
+    super.initState();
+    _carregarLeituras();
   }
 
-  Future<void> _processarNoServidor() async {
-    if (_imageBytes == null) {
-      _mostrarErro("Nenhuma imagem para processar.");
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-
+  Future<void> _carregarLeituras() async {
+    setState(() => _isLoading = true);
     try {
-      // 1. Decodifica e comprime a imagem usando o formato rigoroso do Web
-      img.Image? originalImage = img.decodeImage(_imageBytes!);
-      if (originalImage == null) throw Exception("Falha ao decodificar imagem");
-
-      img.Image resizedImage = img.copyResize(originalImage, width: 800);
-      List<int> compressedBytes = img.encodeJpg(resizedImage, quality: 80);
-      String base64Image = base64Encode(compressedBytes);
-
-      // 2. Tenta enviar para o backend
-      try {
-        final response = await http.post(
-          Uri.parse('$_baseUrl/api/leitura/processar-ia'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'image': base64Image,
-            'medidor_id': widget.medidor['id'],
-            'tenant_id': widget.unidade['tenant_id'],
-            'leitura_anterior': widget.medidor['leitura_anterior']
-          }),
-        ).timeout(const Duration(seconds: 40));
-
-        if (response.statusCode == 200) {
-          _tratarRespostaIA(response.body);
-        } else {
-          _mostrarErro("Erro no servidor: ${response.statusCode}. Tente novamente.");
-        }
-      } catch (e) {
-        _mostrarErro("Falha de conexão. Verifique sua internet e tente novamente.");
+      final dados = await _apiService.getLeituras(widget.tenantId);
+      if (mounted) {
+        setState(() {
+          _leituras = dados;
+          _isLoading = false;
+        });
       }
-
     } catch (e) {
-      _mostrarErro("Erro ao preparar foto: $e");
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
-  }
-
-  void _tratarRespostaIA(String corpo) {
-    var leituraFinal = "Desconhecida";
-    int casasDecimais = widget.medidor['digitos_vermelhos'] ?? 3;
-
-    try {
-      var data = jsonDecode(corpo);
-      if (data is String) data = jsonDecode(data);
-
-      if (data is Map) {
-        double? parsedVal = double.tryParse(data['leitura'].toString());
-        leituraFinal = parsedVal?.toStringAsFixed(casasDecimais) ?? data['leitura'].toString();
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erro ao carregar leituras"), backgroundColor: Colors.red)
+        );
       }
-      
-      leituraFinal = leituraFinal.replaceAll('.', ',');
-      _mostrarSucesso("A IA identificou o valor:\n\n$leituraFinal");
-    } catch (e) {
-      _mostrarSucesso("Leitura enviada! O sistema processará o valor.");
     }
-  }
-
-  void _mostrarSucesso(String mensagem) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Icon(Icons.check_circle, color: Colors.green, size: 60),
-        content: Text(mensagem, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        actions: [
-          ElevatedButton(
-            onPressed: () { Navigator.pop(context); Navigator.pop(context, true); },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("CONFIRMAR", style: TextStyle(color: Colors.white)),
-          )
-        ],
-      ),
-    );
-  }
-
-  void _mostrarErro(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   @override
   Widget build(BuildContext context) {
-    String leituraAnteriorFormatada = widget.medidor['leitura_anterior'].toString().replaceAll('.', ',');
-
-    return Scaffold(
-      backgroundColor: Colors.blue[50],
-      appBar: AppBar(
-        title: Text("Unidade ${widget.unidade['identificacao']}"),
-        backgroundColor: Colors.blue[900],
-        foregroundColor: Colors.white,
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text("MEDIDOR: ${widget.medidor['tipo_medidor'].toString().toUpperCase()}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 20)),
-          const SizedBox(height: 10),
-          Text("Leitura Anterior: $leituraAnteriorFormatada", style: TextStyle(color: Colors.grey[700], fontSize: 16)),
-          const SizedBox(height: 40),
-          Center(
-            child: _imagePath == null
-                ? Icon(Icons.image_search, size: 150, color: Colors.blue[100])
-                : Container(
-                    height: 180, width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 20),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.blue[900]!, width: 3),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(7),
-                      child: Image.network(_imagePath!, fit: BoxFit.cover),
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 50),
-          if (_isProcessing)
-            Column(children: [const CircularProgressIndicator(), const SizedBox(height: 20), Text("PROCESSANDO...", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold))])
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: SizedBox(
-                width: double.infinity, height: 70,
-                child: ElevatedButton.icon(
-                  onPressed: _capturarFoto,
-                  icon: const Icon(Icons.camera_alt, size: 30),
-                  label: const Text("TIRAR FOTO DO RELÓGIO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                ),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('HISTÓRICO DE LEITURAS', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+            ElevatedButton.icon(
+              onPressed: _carregarLeituras,
+              icon: const Icon(Icons.refresh, color: Colors.blue),
+              label: const Text('ATUALIZAR', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50], elevation: 0),
             ),
-        ],
-      ),
+          ]
+        ),
+        const SizedBox(height: 5),
+        const Text('Visualize todas as medições processadas no condomínio.', style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 20),
+        
+        Expanded(
+          child: _isLoading 
+            ? const Center(child: CircularProgressIndicator())
+            : _leituras.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.water_drop_outlined, size: 60, color: Colors.grey[400]),
+                      const SizedBox(height: 10),
+                      const Text("Nenhuma leitura registrada ainda.", style: TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _leituras.length,
+                  itemBuilder: (context, index) {
+                    final l = _leituras[index];
+                    
+                    // Define a cor da bolinha baseada no status
+                    Color corStatus = Colors.green;
+                    if (l['status_leitura'].toString().contains('ALERTA')) corStatus = Colors.red;
+                    
+                    return Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(15),
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.blue[50],
+                          radius: 25,
+                          child: Icon(Icons.speed, color: Colors.blue[900], size: 28),
+                        ),
+                        title: Text(
+                          "Unidade ${l['unidade'] ?? l['identificacao'] ?? '-'}  |  Medidor: ${l['tipo_medidor'].toString().toUpperCase()}", 
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 5),
+                            Text("Data: ${l['data_formatada'] ?? l['data_leitura'] ?? '-'}  |  Bloco: ${l['bloco'] ?? l['bloco_nome'] ?? '-'}"),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: corStatus.withOpacity(0.1), borderRadius: BorderRadius.circular(5), border: Border.all(color: corStatus)),
+                                  child: Text(l['status_leitura'] ?? 'Concluída', style: TextStyle(fontSize: 12, color: corStatus, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            )
+                          ],
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text("${l['consumo']} m³", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepOrange)),
+                            const SizedBox(height: 4),
+                            Text("R\$ ${l['valor_total_faturado'] ?? '0.00'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                )
+        )
+      ],
     );
   }
 }
