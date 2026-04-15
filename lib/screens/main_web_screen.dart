@@ -5,7 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
-import 'dashboard_screen_web.dart'; // <--- TELA NOVA IMPORTADA AQUI
+import 'dashboard_screen_web.dart';
+import 'detalhe_condominio_web.dart';
 import 'condominios_screen_web.dart';
 import 'usuarios_screen_web.dart';
 import 'leituras_screen_web.dart';
@@ -24,22 +25,44 @@ class _MainWebScreenState extends State<MainWebScreen> {
   int _selectedIndex = 0; 
   Map<String, dynamic>? _usuarioLogado;
   bool _loading = true;
+  
+  // Variáveis Multitenant
+  List<dynamic> _meusCondominios = [];
+  Map<String, dynamic>? _condominioSelecionado;
 
   @override
   void initState() {
     super.initState();
-    _carregarUsuario();
+    _carregarUsuarioECondominios();
   }
 
-  Future<void> _carregarUsuario() async {
+  Future<void> _carregarUsuarioECondominios() async {
     final prefs = await SharedPreferences.getInstance();
     final userString = prefs.getString('usuario_dados');
 
     if (userString != null) {
-      setState(() {
-        _usuarioLogado = jsonDecode(userString);
-        _loading = false;
-      });
+      _usuarioLogado = jsonDecode(userString);
+      
+      // Busca os condomínios que este usuário tem acesso
+      int? userId = _usuarioLogado?['id'];
+      String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
+      
+      try {
+        final dados = await ApiServiceWeb().getCondominios(usuarioId: userId, nivel: nivel);
+        if (mounted) {
+          setState(() {
+            _meusCondominios = dados;
+            if (_meusCondominios.isNotEmpty) {
+              // Seleciona o primeiro condomínio por padrão ao entrar
+              _condominioSelecionado = _meusCondominios[0];
+              _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
+            }
+            _loading = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) setState(() => _loading = false);
+      }
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
@@ -114,8 +137,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A confirmação não bate com a nova senha!"), backgroundColor: Colors.red));
                     return;
                   }
-
                   setStateModal(() => isSaving = true);
+                  
                   try {
                     await ApiServiceWeb().alterarSenha(_usuarioLogado!['id'], senhaAtualCtrl.text, novaSenhaCtrl.text);
                     if (mounted) {
@@ -138,126 +161,206 @@ class _MainWebScreenState extends State<MainWebScreen> {
     );
   }
 
+  // =========================================================================
+  // SELETOR RÁPIDO DE CONDOMÍNIO (MULTITENANT)
+  // =========================================================================
+  void _abrirSeletorCondominio() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.swap_horiz, color: Colors.blue[900]),
+            const SizedBox(width: 10),
+            Text("Trocar Condomínio", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _meusCondominios.length,
+            itemBuilder: (c, i) {
+              final cond = _meusCondominios[i];
+              bool isAtivo = _condominioSelecionado?['id'] == cond['id'];
+              
+              return ListTile(
+                leading: Icon(Icons.apartment, color: isAtivo ? Colors.blue[900] : Colors.grey),
+                title: Text(cond['nome'], style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.blue[900] : Colors.black)),
+                subtitle: Text("CNPJ: ${cond['cnpj'] ?? 'N/A'}"),
+                trailing: isAtivo ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                tileColor: isAtivo ? Colors.blue[50] : null,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                onTap: () {
+                  setState(() {
+                    _condominioSelecionado = cond;
+                    _usuarioLogado!['tenant_id'] = cond['id'];
+                    _selectedIndex = 0; // Volta para o Dashboard ao trocar para forçar o recarregamento dos dados
+                  });
+                  Navigator.pop(ctx);
+                },
+              );
+            }
+          )
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FECHAR", style: TextStyle(color: Colors.grey)))
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
-    int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
-    
+
+    // Verifica se é MASTER para exibir menus extras
+    bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || 
+                    _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
+
+    // Construção Dinâmica do Menu
     List<NavigationRailDestination> menuItens = [
-      // >>> MENU NOVO ADICIONADO <<<
-      const NavigationRailDestination(
-        icon: Icon(Icons.dashboard_outlined),
-        selectedIcon: Icon(Icons.dashboard),
-        label: Text('Painel Inicial'),
-      ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.apartment_outlined),
-        selectedIcon: Icon(Icons.apartment),
-        label: Text('Condomínios'),
-      ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.people_outline),
-        selectedIcon: Icon(Icons.people),
-        label: Text('Usuários / Equipe'),
-      ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.water_drop_outlined),
-        selectedIcon: Icon(Icons.water_drop),
-        label: Text('Leituras'),
-      ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.bar_chart_outlined),
-        selectedIcon: Icon(Icons.bar_chart),
-        label: Text('Relatórios'),
-      ),
-      const NavigationRailDestination(
-        icon: Icon(Icons.download_outlined),
-        selectedIcon: Icon(Icons.download),
-        label: Text('Exportar Dados'),
-      ),
+      const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
+      const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
+      const NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Usuários / Equipe')),
+      // const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')), // Opcional
+      const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
+      const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar Dados')),
     ];
 
+    if (isMaster) {
+      menuItens.add(
+        const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Gerenciar Condomínios'))
+      );
+    }
+
+    // Construção Dinâmica das Telas vinculadas ao Condomínio Selecionado
     List<Widget> telas = [
-      DashboardScreenWeb(usuarioLogado: _usuarioLogado), // <<< TELA NOVA ADICIONADA
-      CondominiosScreenWeb(usuarioLogado: _usuarioLogado),
-      const UsuariosScreenWeb(), 
-      LeiturasScreenWeb(tenantId: tenantIdAtual),
-      const RelatoriosScreenWeb(),
-      const ExportacaoScreenWeb(), 
+      DashboardScreenWeb(usuarioLogado: _usuarioLogado), // 0: Dashboard
+      _condominioSelecionado != null // 1: Cadastro (Antigo Condomínios)
+          ? DetalheCondominioWeb(condominio: _condominioSelecionado!)
+          : const Center(child: Text("Nenhum condomínio selecionado.")),
+      const UsuariosScreenWeb(), // 2: Usuários
+      // LeiturasScreenWeb(tenantId: _usuarioLogado?['tenant_id'] ?? 1), // Opcional
+      const RelatoriosScreenWeb(), // 3: Relatórios
+      const ExportacaoScreenWeb(), // 4: Exportação
     ];
+
+    if (isMaster) {
+      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // Tela Geral do Master
+    }
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
-      appBar: AppBar(
-        title: Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        centerTitle: false,
-        backgroundColor: Colors.blue[900], 
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white), 
-        actions: [
-          Center(
-            child: Tooltip(
-              message: "Clique para alterar sua senha",
-              child: ActionChip(
-                avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-                label: Text(
-                  "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
-                  style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
-                ),
-                backgroundColor: Colors.white,
-                onPressed: _abrirModalAlterarSenha,
-              ),
-            ),
-          ),
-          const SizedBox(width: 15),
-          TextButton.icon(
-            onPressed: _logout, 
-            icon: const Icon(Icons.exit_to_app, color: Colors.white), 
-            label: const Text('SAIR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 20),
-        ],
-      ),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
-          LayoutBuilder(
-            builder: (context, constraint) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraint.maxHeight),
-                  child: IntrinsicHeight(
-                    child: NavigationRail(
-                      extended: true,
+          // ==========================================
+          // CABEÇALHO SUPERIOR (TOP BAR MULTITENANT)
+          // ==========================================
+          Container(
+            height: 75,
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            decoration: BoxDecoration(
+              color: Colors.white, 
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))]
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.business, color: Colors.blue[900], size: 32),
+                const SizedBox(width: 15),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_condominioSelecionado?['nome'] ?? 'Carregando...', style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                    const Text("Condomínio Ativo", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+                const SizedBox(width: 25),
+                ElevatedButton.icon(
+                  onPressed: _abrirSeletorCondominio,
+                  icon: const Icon(Icons.sync, size: 18),
+                  label: const Text("TROCAR", style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[50], 
+                    foregroundColor: Colors.blue[900], 
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                ),
+                const Spacer(),
+                // PERFIL DO USUÁRIO LOGADO
+                Center(
+                  child: Tooltip(
+                    message: "Clique para alterar sua senha",
+                    child: ActionChip(
+                      avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
+                      label: Text(
+                        "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
+                        style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
+                      ),
                       backgroundColor: Colors.white,
-                      elevation: 5,
-                      selectedIndex: _selectedIndex,
-                      onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
-                      selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
-                      unselectedIconTheme: const IconThemeData(color: Colors.grey, size: 24),
-                      selectedLabelTextStyle: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold),
-                      unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                      destinations: menuItens,
+                      side: BorderSide(color: Colors.blue[100]!),
+                      onPressed: _abrirModalAlterarSenha,
                     ),
                   ),
                 ),
-              );
-            }
+                const SizedBox(width: 15),
+                TextButton.icon(
+                  onPressed: _logout, 
+                  icon: Icon(Icons.exit_to_app, color: Colors.red[700]), 
+                  label: Text('SAIR', style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
-          
+
+          // ==========================================
+          // ÁREA PRINCIPAL (MENU LATERAL + CONTEÚDO)
+          // ==========================================
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2)],
-              ),
-              child: _selectedIndex < telas.length 
-                ? telas[_selectedIndex] 
-                : const Center(child: Text("Tela em construção...")),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraint) {
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: constraint.maxHeight),
+                        child: IntrinsicHeight(
+                          child: NavigationRail(
+                            extended: true,
+                            backgroundColor: Colors.white,
+                            elevation: 5,
+                            selectedIndex: _selectedIndex,
+                            onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
+                            selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
+                            unselectedIconTheme: const IconThemeData(color: Colors.grey, size: 24),
+                            selectedLabelTextStyle: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold),
+                            unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
+                            destinations: menuItens,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                ),
+                
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2)],
+                    ),
+                    child: _selectedIndex < telas.length 
+                      ? telas[_selectedIndex] 
+                      : const Center(child: Text("Tela em construção...")),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
