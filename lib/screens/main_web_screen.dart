@@ -53,7 +53,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
           setState(() {
             _meusCondominios = dados;
             if (_meusCondominios.isNotEmpty) {
-              // Seleciona o primeiro condomínio por padrão ao entrar
               _condominioSelecionado = _meusCondominios[0];
               _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
             }
@@ -161,9 +160,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
     );
   }
 
-  // =========================================================================
-  // SELETOR RÁPIDO DE CONDOMÍNIO (MULTITENANT)
-  // =========================================================================
   void _abrirSeletorCondominio() {
     showDialog(
       context: context,
@@ -195,7 +191,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   setState(() {
                     _condominioSelecionado = cond;
                     _usuarioLogado!['tenant_id'] = cond['id'];
-                    _selectedIndex = 0; // Volta para o Dashboard ao trocar para forçar o recarregamento dos dados
+                    _selectedIndex = 0; 
                   });
                   Navigator.pop(ctx);
                 },
@@ -214,15 +210,15 @@ class _MainWebScreenState extends State<MainWebScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    // Verifica se é MASTER para exibir menus extras
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || 
                     _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
 
-    // Construção Dinâmica do Menu
+    // MENU RESTAURADO COM A OPÇÃO "LEITURAS"
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
       const NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Usuários / Equipe')),
+      const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')), // <- VOLTOU AQUI
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar Dados')),
     ];
@@ -233,19 +229,20 @@ class _MainWebScreenState extends State<MainWebScreen> {
       );
     }
 
-    // Construção Dinâmica das Telas vinculadas ao Condomínio Selecionado
+    // TELAS SINCRONIZADAS COM O MENU
     List<Widget> telas = [
       DashboardScreenWeb(usuarioLogado: _usuarioLogado), // 0: Dashboard
       _condominioSelecionado != null // 1: Cadastro
           ? DetalheCondominioWeb(condominio: _condominioSelecionado!)
           : const Center(child: Text("Nenhum condomínio selecionado.")),
       const UsuariosScreenWeb(), // 2: Usuários
-      const RelatoriosScreenWeb(), // 3: Relatórios
-      const ExportacaoScreenWeb(), // 4: Exportação
+      LeiturasScreenWeb(tenantId: _usuarioLogado?['tenant_id'] ?? 1), // 3: Leituras <- VOLTOU AQUI
+      const RelatoriosScreenWeb(), // 4: Relatórios
+      const ExportacaoScreenWeb(), // 5: Exportação
     ];
 
     if (isMaster) {
-      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // 5: Tela Geral do Master
+      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // 6: Tela Geral do Master
     }
 
     return Scaffold(
@@ -278,7 +275,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
                 ElevatedButton.icon(
                   onPressed: _abrirSeletorCondominio,
                   icon: const Icon(Icons.sync, size: 18),
-                  // AJUSTE SOLICITADO: TEXTO MAIS EXPLÍCITO
                   label: const Text("TROCAR CONDOMÍNIO", style: TextStyle(fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue[50], 
