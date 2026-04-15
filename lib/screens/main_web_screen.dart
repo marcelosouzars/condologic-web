@@ -223,7 +223,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
       const NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Usuários / Equipe')),
-      // const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')), // Opcional
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar Dados')),
     ];
@@ -237,17 +236,16 @@ class _MainWebScreenState extends State<MainWebScreen> {
     // Construção Dinâmica das Telas vinculadas ao Condomínio Selecionado
     List<Widget> telas = [
       DashboardScreenWeb(usuarioLogado: _usuarioLogado), // 0: Dashboard
-      _condominioSelecionado != null // 1: Cadastro (Antigo Condomínios)
+      _condominioSelecionado != null // 1: Cadastro
           ? DetalheCondominioWeb(condominio: _condominioSelecionado!)
           : const Center(child: Text("Nenhum condomínio selecionado.")),
       const UsuariosScreenWeb(), // 2: Usuários
-      // LeiturasScreenWeb(tenantId: _usuarioLogado?['tenant_id'] ?? 1), // Opcional
       const RelatoriosScreenWeb(), // 3: Relatórios
       const ExportacaoScreenWeb(), // 4: Exportação
     ];
 
     if (isMaster) {
-      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // Tela Geral do Master
+      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // 5: Tela Geral do Master
     }
 
     return Scaffold(
@@ -280,7 +278,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
                 ElevatedButton.icon(
                   onPressed: _abrirSeletorCondominio,
                   icon: const Icon(Icons.sync, size: 18),
-                  label: const Text("TROCAR", style: TextStyle(fontWeight: FontWeight.bold)),
+                  // AJUSTE SOLICITADO: TEXTO MAIS EXPLÍCITO
+                  label: const Text("TROCAR CONDOMÍNIO", style: TextStyle(fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue[50], 
                     foregroundColor: Colors.blue[900], 
