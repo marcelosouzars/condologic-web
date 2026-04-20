@@ -101,9 +101,12 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                   onPressed: isSaving ? null : () async {
+                    if (valorController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Informe o valor!"), backgroundColor: Colors.red));
+                       return;
+                    }
                     setStateDialog(() => isSaving = true);
                     try {
-                      // Chama a API (certifique-se que o auditarLeitura existe no seu api_service_web.dart)
                       await _apiService.auditarLeitura(
                         leitura['id'], 
                         'corrigir', 
@@ -112,7 +115,7 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
                       );
                       if (mounted) {
                         Navigator.pop(ctx);
-                        _carregarListaAuditoria(); // Atualiza a lista na tela
+                        _carregarListaAuditoria(); // Recarrega a lista para sumir o item corrigido
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Corrigido com sucesso!"), backgroundColor: Colors.green));
                       }
                     } catch (e) {
@@ -134,15 +137,15 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Auditoria de Leituras"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.blue[900],
+        title: const Text("Auditoria de Leituras", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.blue[900],
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _carregarListaAuditoria)
+          IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _carregarListaAuditoria)
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? Center(child: CircularProgressIndicator(color: Colors.blue[900]))
         : _alertas.isEmpty 
           ? Center(
               child: Column(
@@ -150,7 +153,7 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
                 children: [
                   Icon(Icons.check_circle_outline, size: 80, color: Colors.green[300]),
                   const SizedBox(height: 20),
-                  const Text("Nenhuma discrepância encontrada!", style: TextStyle(fontSize: 18, color: Colors.grey)),
+                  const Text("Nenhuma discrepância pendente!", style: TextStyle(fontSize: 18, color: Colors.grey)),
                 ],
               )
             )
@@ -179,7 +182,7 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
                       icon: const Icon(Icons.edit, color: Colors.white, size: 18),
                       label: const Text("CORRIGIR", style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
-                      onPressed: () => _abrirModalCorrecao(alerta), // <--- CHAMA O POPUP AQUI
+                      onPressed: () => _abrirModalCorrecao(alerta),
                     ),
                   ),
                 );

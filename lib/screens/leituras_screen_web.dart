@@ -39,7 +39,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       start: DateTime(now.year, now.month, 1),
       end: DateTime(now.year, now.month + 1, 0),
     );
-    
     // Carrega blocos e já dispara a busca automática do mês atual
     _inicializarTela();
   }
@@ -128,6 +127,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
       
       List<dynamic> dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+      
       if (dados.isEmpty && _selectedBloco != null) {
         dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
       }
@@ -193,7 +193,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _selecionarPeriodo() async {
     DateTime inicioTemp = _dataSelecionada.start;
     DateTime fimTemp = _dataSelecionada.end;
-
+    
     await showDialog(
       context: context,
       builder: (BuildContext ctx) {
@@ -267,6 +267,81 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
+  // ============================================================
+  // FUNÇÃO NOVA: ABRIR POPUP PARA EDITAR LEITURA NORMAL
+  // ============================================================
+  void _abrirModalEdicao(Map<String, dynamic> leitura) {
+    TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Row(
+                children: [
+                  Icon(Icons.edit_note, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  Text("Editar Leitura - Apto ${leitura['unidade'] ?? leitura['identificacao'] ?? '-'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Medidor: ${(leitura['tipo_medidor'] ?? '').toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 5),
+                    Text("Data atual: ${leitura['data_formatada'] ?? leitura['data_leitura'] ?? '-'}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: valorController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: "Novo Valor Lido (m³)", border: OutlineInputBorder()),
+                    ),
+                    if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  onPressed: isSaving ? null : () async {
+                    if (valorController.text.isEmpty) return;
+                    setStateDialog(() => isSaving = true);
+                    try {
+                      double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
+                      // Chama a API para corrigir a leitura
+                      await _apiService.corrigirLeitura(leitura['id'], novoValor);
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _buscarDados(); // Recarrega os dados da tabela
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada com sucesso!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: const Text("SALVAR ALTERAÇÃO", style: TextStyle(color: Colors.white)),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -290,6 +365,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             )
           ],
         ),
+        
         const SizedBox(height: 20),
 
         // ===============================================
@@ -346,7 +422,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
                     
-                    // 3. ANDAR (COM TEXTO DINÂMICO DE BLOQUEIO)
+                    // 3. ANDAR
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -372,7 +448,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
 
-                    // 4. UNIDADE (COM TEXTO DINÂMICO DE BLOQUEIO)
+                    // 4. UNIDADE
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -447,6 +523,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                               _buildHeaderCell('Leitura Atual', flex: 2),
                               _buildHeaderCell('Consumo', flex: 2, color: Colors.deepOrange),
                               _buildHeaderCell('Status da Leitura', flex: 2, color: Colors.blue[900]),
+                              _buildHeaderCell('Ações', flex: 1, color: Colors.blue[900]), // <--- NOVA COLUNA DE AÇÕES
                             ],
                           ),
                         ),
@@ -481,6 +558,21 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                     _buildDataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
+                                    
+                                    // NOVO BOTÃO DE AÇÃO NA LINHA
+                                    _buildDataCell(
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                                          tooltip: 'Alterar Leitura',
+                                          onPressed: () => _abrirModalEdicao(l),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                      ),
+                                      flex: 1
+                                    ),
                                   ],
                                 ),
                               );
