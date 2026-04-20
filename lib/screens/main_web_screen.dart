@@ -242,17 +242,21 @@ class _MainWebScreenState extends State<MainWebScreen> {
       menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
     }
 
+    // ================================================================================
+    // MÁGICA DO REFRESH IMEDIATO: O `ValueKey` força as telas a recarregarem do zero
+    // sempre que o `tenantIdAtual` mudar no seletor de condomínios!
+    // ================================================================================
     List<Widget> telas = [
-      DashboardScreenWeb(usuarioLogado: _usuarioLogado),
-      _condominioSelecionado != null ? DetalheCondominioWeb(condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
-      const UsuariosScreenWeb(), 
-      LeiturasScreenWeb(tenantId: tenantIdAtual),
-      const RelatoriosScreenWeb(),
-      const ExportacaoScreenWeb(), 
+      DashboardScreenWeb(key: ValueKey('dash_$tenantIdAtual'), usuarioLogado: _usuarioLogado),
+      _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtual'), condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
+      UsuariosScreenWeb(key: ValueKey('users_$tenantIdAtual')), 
+      LeiturasScreenWeb(key: ValueKey('leituras_$tenantIdAtual'), tenantId: tenantIdAtual),
+      RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
+      ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
     ];
     
     if (isMaster) {
-      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado));
+      telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtual'), usuarioLogado: _usuarioLogado));
     }
 
     return Scaffold(
