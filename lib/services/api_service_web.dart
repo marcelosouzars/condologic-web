@@ -1,9 +1,32 @@
 // ==========================================>>> api_service_web.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart'; // <--- IMPORTANTE PARA O F5 (WEB)
 
 class ApiServiceWeb {
   static const String baseUrl = 'https://condologic-backend.onrender.com/api';
+
+  // ==========================================
+  // GESTÃO DE SESSÃO WEB (BLINDAGEM CONTRA F5)
+  // ==========================================
+  Future<void> salvarSessao(Map<String, dynamic> usuario) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('usuarioLogado', jsonEncode(usuario));
+  }
+
+  Future<Map<String, dynamic>?> recuperarSessao() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? userData = prefs.getString('usuarioLogado');
+    if (userData != null) {
+      return jsonDecode(userData);
+    }
+    return null;
+  }
+
+  Future<void> limparSessao() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('usuarioLogado');
+  }
 
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String cpf, String password) async {
@@ -18,7 +41,9 @@ class ApiServiceWeb {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        await salvarSessao(data); // <--- SALVA A SESSÃO NA HORA QUE ENTRA
+        return data;
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['error'] ?? 'Erro desconhecido');

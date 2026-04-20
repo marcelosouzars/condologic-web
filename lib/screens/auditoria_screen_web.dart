@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service_web.dart';
 
 class AuditoriaScreenWeb extends StatefulWidget {
@@ -24,6 +23,7 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
   Future<void> _carregarListaAuditoria() async {
     setState(() => _isLoading = true);
     if (widget.usuarioLogado == null) return;
+    
     int tenantId = widget.usuarioLogado!['tenant_id'] ?? 1;
 
     try {
@@ -35,57 +35,59 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao carregar auditoria.")));
+      }
     }
   }
 
-  void _abrirModalAuditoria(Map leitura) {
-    TextEditingController valorController = TextEditingController(text: leitura['valor_lido'].toString());
+  // ============================================================
+  // FUNÇÃO NOVA: ABRIR POPUP PARA CORRIGIR A LEITURA
+  // ============================================================
+  void _abrirModalCorrecao(Map<String, dynamic> leitura) {
+    TextEditingController valorController = TextEditingController(text: leitura['valor_lido']?.toString() ?? '');
     TextEditingController obsController = TextEditingController();
+    bool isSaving = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        bool isSaving = false;
+      builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: Row(
-                children: [
-                  Icon(Icons.gavel, color: Colors.blue[900], size: 30),
-                  const SizedBox(width: 10),
-                  Text("Auditoria - Unidade ${leitura['unidade_nome']}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
-                ],
-              ),
+              title: Text("Corrigir Leitura - ${leitura['unidade']}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
               content: SizedBox(
                 width: 400,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      width: double.infinity,
-                      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
-                      child: Text("Motivo do Alerta: ${leitura['status_leitura']}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text("Valor extraído pela IA:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text("Medidor: ${leitura['tipo_medidor'].toString().toUpperCase()}"),
                     const SizedBox(height: 5),
+                    Text("Motivo do Alerta: ${leitura['status_leitura']}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    if (leitura['foto_url'] != null && leitura['foto_url'].toString().length > 10)
+                      Center(
+                        child: Container(
+                          height: 200,
+                          decoration: BoxDecoration(border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(10)),
+                          child: Image.network(leitura['foto_url'], fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 50)),
+                        ),
+                      )
+                    else 
+                      const Center(child: Text("Sem foto disponível")),
+                    const SizedBox(height: 20),
                     TextField(
                       controller: valorController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(border: OutlineInputBorder(), suffixText: "m³"),
+                      decoration: const InputDecoration(labelText: "Valor Correto da Leitura", border: OutlineInputBorder()),
                     ),
-                    const SizedBox(height: 20),
-                    const Text("Observação da Auditoria (Obrigatório):", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: obsController,
-                      maxLines: 2,
-                      decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Ex: Confirmada troca de relógio pelo morador."),
+                      decoration: const InputDecoration(labelText: "Justificativa/Observação", border: OutlineInputBorder()),
                     ),
                     if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
                   ],
@@ -93,33 +95,33 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
                   child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
-                  onPressed: isSaving ? null : () async {
-                    if (obsController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A observação é obrigatória!"), backgroundColor: Colors.red));
-                      return;
-                    }
-                    setStateDialog(() => isSaving = true);
-                    await _enviarAuditoria(leitura['id'], 'validar', valorController.text, obsController.text);
-                  },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: const Text("VALIDAR IA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-                ElevatedButton(
                   onPressed: isSaving ? null : () async {
-                    if (obsController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A observação é obrigatória!"), backgroundColor: Colors.red));
-                      return;
-                    }
                     setStateDialog(() => isSaving = true);
-                    await _enviarAuditoria(leitura['id'], 'corrigir', valorController.text, obsController.text);
+                    try {
+                      // Chama a API (certifique-se que o auditarLeitura existe no seu api_service_web.dart)
+                      await _apiService.auditarLeitura(
+                        leitura['id'], 
+                        'corrigir', 
+                        valorController.text.replaceAll(',', '.'), 
+                        obsController.text
+                      );
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _carregarListaAuditoria(); // Atualiza a lista na tela
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Corrigido com sucesso!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                    }
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
-                  child: const Text("CORRIGIR MANUAL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+                  child: const Text("SALVAR CORREÇÃO", style: TextStyle(color: Colors.white)),
+                )
               ],
             );
           }
@@ -128,67 +130,60 @@ class _AuditoriaScreenWebState extends State<AuditoriaScreenWeb> {
     );
   }
 
-  Future<void> _enviarAuditoria(int leituraId, String acao, String novoValor, String observacao) async {
-    try {
-      await _apiService.auditarLeitura(leituraId, acao, novoValor.replaceAll(',', '.'), observacao);
-      if (mounted) {
-        Navigator.pop(context); // Fecha o modal
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Auditoria registrada com sucesso!"), backgroundColor: Colors.green));
-        _carregarListaAuditoria(); // Atualiza a lista na tela
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text("Auditoria de Leituras", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
-        backgroundColor: Colors.red[800],
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Auditoria de Leituras"),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.blue[900],
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _carregarListaAuditoria)
+        ],
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
-        : _alertas.isEmpty
-          ? const Center(child: Text("Excelente! Não há leituras pendentes de auditoria.", style: TextStyle(fontSize: 18, color: Colors.green)))
+        : _alertas.isEmpty 
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 80, color: Colors.green[300]),
+                  const SizedBox(height: 20),
+                  const Text("Nenhuma discrepância encontrada!", style: TextStyle(fontSize: 18, color: Colors.grey)),
+                ],
+              )
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: _alertas.length,
               itemBuilder: (context, index) {
-                final l = _alertas[index];
+                final alerta = _alertas[index];
                 return Card(
-                  color: Colors.red[50],
-                  elevation: 2,
-                  margin: const EdgeInsets.only(bottom: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.red[200]!)),
+                  elevation: 3,
+                  margin: const EdgeInsets.only(bottom: 15),
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(15),
-                    leading: const Icon(Icons.warning, color: Colors.red, size: 40),
-                    title: Text("Unidade ${l['unidade_nome']} - Medidor: ${l['medidor_tipo'].toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    leading: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 40),
+                    title: Text("Unidade: ${alerta['unidade']} - Bloco: ${alerta['bloco']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 5),
-                        Text("Status: ${l['status_leitura']}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        Text("Valor Lido: ${l['valor_lido']} m³   |   Anterior: ${l['leitura_anterior']} m³", style: TextStyle(color: Colors.grey[800])),
+                        Text("Medidor: ${alerta['tipo_medidor'].toString().toUpperCase()}"),
+                        Text("Status: ${alerta['status_leitura']}", style: const TextStyle(color: Colors.red)),
+                        Text("Valor Lido pela IA: ${alerta['valor_lido'] ?? 'N/A'}"),
                       ],
                     ),
                     trailing: ElevatedButton.icon(
-                      onPressed: () => _abrirModalAuditoria(l),
-                      icon: const Icon(Icons.gavel, color: Colors.white),
-                      label: const Text("AUDITAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
+                      icon: const Icon(Icons.edit, color: Colors.white, size: 18),
+                      label: const Text("CORRIGIR", style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                      onPressed: () => _abrirModalCorrecao(alerta), // <--- CHAMA O POPUP AQUI
                     ),
                   ),
                 );
-              },
+              }
             ),
     );
   }
