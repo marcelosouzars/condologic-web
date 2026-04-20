@@ -1,5 +1,4 @@
 // ==========================================>>> main_web_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,25 +35,42 @@ class _MainWebScreenState extends State<MainWebScreen> {
     _carregarUsuarioECondominios();
   }
 
+  // =============================================================
+  // MÁGICA DO F5: CARREGA E MANTÉM A SESSÃO ATIVA
+  // =============================================================
   Future<void> _carregarUsuarioECondominios() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userString = prefs.getString('usuario_dados');
-
-    if (userString != null) {
-      _usuarioLogado = jsonDecode(userString);
+    final api = ApiServiceWeb();
+    // Recupera do cofre o que estava salvo
+    final userSessao = await api.recuperarSessao();
+    
+    if (userSessao != null) {
+      _usuarioLogado = userSessao;
       
-      // Busca os condomínios que este usuário tem acesso
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
       
       try {
-        final dados = await ApiServiceWeb().getCondominios(usuarioId: userId, nivel: nivel);
+        final dados = await api.getCondominios(usuarioId: userId, nivel: nivel);
         if (mounted) {
           setState(() {
             _meusCondominios = dados;
             if (_meusCondominios.isNotEmpty) {
-              _condominioSelecionado = _meusCondominios[0];
+              // Verifica se já tínhamos um condomínio selecionado antes do F5
+              int? ultimoTenantId = _usuarioLogado?['tenant_id'];
+              
+              if (ultimoTenantId != null) {
+                try {
+                  _condominioSelecionado = _meusCondominios.firstWhere((c) => c['id'] == ultimoTenantId);
+                } catch (e) {
+                  _condominioSelecionado = _meusCondominios[0];
+                }
+              } else {
+                _condominioSelecionado = _meusCondominios[0];
+              }
+              
+              // Sincroniza o usuário logado com o condomínio ativo
               _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
+              api.salvarSessao(_usuarioLogado!);
             }
             _loading = false;
           });
@@ -63,6 +79,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
         if (mounted) setState(() => _loading = false);
       }
     } else {
+      // Se não tem nada no cofre, volta pro login
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
       });
@@ -70,9 +87,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   }
 
   Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-
+    await ApiServiceWeb().limparSessao();
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
   }
@@ -107,7 +122,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   TextField(
                     controller: senhaAtualCtrl, 
                     obscureText: true, 
-                    decoration: const InputDecoration(labelText: "Senha Atual (Ex: 123456)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))
+                    decoration: const InputDecoration(labelText: "Senha Atual", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))
                   ),
                   const SizedBox(height: 15),
                   TextField(
@@ -133,16 +148,15 @@ class _MainWebScreenState extends State<MainWebScreen> {
                     return;
                   }
                   if (novaSenhaCtrl.text != confirmaSenhaCtrl.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A confirmação não bate com a nova senha!"), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A confirmação não bate!"), backgroundColor: Colors.red));
                     return;
                   }
                   setStateModal(() => isSaving = true);
-                  
                   try {
                     await ApiServiceWeb().alterarSenha(_usuarioLogado!['id'], senhaAtualCtrl.text, novaSenhaCtrl.text);
                     if (mounted) {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sua senha foi atualizada com sucesso!"), backgroundColor: Colors.green));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Senha atualizada!"), backgroundColor: Colors.green));
                     }
                   } catch (e) {
                     setStateModal(() => isSaving = false);
@@ -187,13 +201,15 @@ class _MainWebScreenState extends State<MainWebScreen> {
                 trailing: isAtivo ? const Icon(Icons.check_circle, color: Colors.green) : null,
                 tileColor: isAtivo ? Colors.blue[50] : null,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                onTap: () {
+                onTap: () async {
                   setState(() {
                     _condominioSelecionado = cond;
                     _usuarioLogado!['tenant_id'] = cond['id'];
                     _selectedIndex = 0; 
                   });
-                  Navigator.pop(ctx);
+                  // Salva a nova escolha no cofre para o F5 não perder
+                  await ApiServiceWeb().salvarSessao(_usuarioLogado!);
+                  if (mounted) Navigator.pop(ctx);
                 },
               );
             }
@@ -210,152 +226,77 @@ class _MainWebScreenState extends State<MainWebScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || 
-                    _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
-
-    // MENU RESTAURADO COM A OPÇÃO "LEITURAS"
+    bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
+    int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
+    
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
-      const NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Usuários / Equipe')),
-      const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')), // <- VOLTOU AQUI
+      const NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Equipe')),
+      const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')),
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
-      const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar Dados')),
+      const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
     ];
-
+    
     if (isMaster) {
-      menuItens.add(
-        const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Gerenciar Condomínios'))
-      );
+      menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
     }
 
-    // TELAS SINCRONIZADAS COM O MENU
     List<Widget> telas = [
-      DashboardScreenWeb(usuarioLogado: _usuarioLogado), // 0: Dashboard
-      _condominioSelecionado != null // 1: Cadastro
-          ? DetalheCondominioWeb(condominio: _condominioSelecionado!)
-          : const Center(child: Text("Nenhum condomínio selecionado.")),
-      const UsuariosScreenWeb(), // 2: Usuários
-      LeiturasScreenWeb(tenantId: _usuarioLogado?['tenant_id'] ?? 1), // 3: Leituras <- VOLTOU AQUI
-      const RelatoriosScreenWeb(), // 4: Relatórios
-      const ExportacaoScreenWeb(), // 5: Exportação
+      DashboardScreenWeb(usuarioLogado: _usuarioLogado),
+      _condominioSelecionado != null ? DetalheCondominioWeb(condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
+      const UsuariosScreenWeb(), 
+      LeiturasScreenWeb(tenantId: tenantIdAtual),
+      const RelatoriosScreenWeb(),
+      const ExportacaoScreenWeb(), 
     ];
-
+    
     if (isMaster) {
-      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado)); // 6: Tela Geral do Master
+      telas.add(CondominiosScreenWeb(usuarioLogado: _usuarioLogado));
     }
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
-      body: Column(
-        children: [
-          // ==========================================
-          // CABEÇALHO SUPERIOR (TOP BAR MULTITENANT)
-          // ==========================================
-          Container(
-            height: 75,
-            padding: const EdgeInsets.symmetric(horizontal: 25),
-            decoration: BoxDecoration(
-              color: Colors.white, 
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))]
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.business, color: Colors.blue[900], size: 32),
-                const SizedBox(width: 15),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_condominioSelecionado?['nome'] ?? 'Carregando...', style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                    const Text("Condomínio Ativo", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ),
-                const SizedBox(width: 25),
-                ElevatedButton.icon(
-                  onPressed: _abrirSeletorCondominio,
-                  icon: const Icon(Icons.sync, size: 18),
-                  label: const Text("TROCAR CONDOMÍNIO", style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[50], 
-                    foregroundColor: Colors.blue[900], 
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-                  ),
-                ),
-                const Spacer(),
-                // PERFIL DO USUÁRIO LOGADO
-                Center(
-                  child: Tooltip(
-                    message: "Clique para alterar sua senha",
-                    child: ActionChip(
-                      avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-                      label: Text(
-                        "${_usuarioLogado?['nome'] ?? 'Usuário'} (${_usuarioLogado?['tipo'] ?? ''})", 
-                        style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)
-                      ),
-                      backgroundColor: Colors.white,
-                      side: BorderSide(color: Colors.blue[100]!),
-                      onPressed: _abrirModalAlterarSenha,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                TextButton.icon(
-                  onPressed: _logout, 
-                  icon: Icon(Icons.exit_to_app, color: Colors.red[700]), 
-                  label: Text('SAIR', style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
-                ),
-              ],
+      appBar: AppBar(
+        title: Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue[900], 
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white), 
+        actions: [
+          IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
+          Center(
+            child: ActionChip(
+              avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
+              label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+              backgroundColor: Colors.white,
+              onPressed: _abrirModalAlterarSenha,
             ),
           ),
-
-          // ==========================================
-          // ÁREA PRINCIPAL (MENU LATERAL + CONTEÚDO)
-          // ==========================================
+          const SizedBox(width: 15),
+          TextButton.icon(
+            onPressed: _logout, 
+            icon: const Icon(Icons.exit_to_app, color: Colors.white), 
+            label: const Text('SAIR', style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(width: 20),
+        ],
+      ),
+      body: Row(
+        children: [
+          NavigationRail(
+            extended: true,
+            backgroundColor: Colors.white,
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
+            selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
+            destinations: menuItens,
+          ),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LayoutBuilder(
-                  builder: (context, constraint) {
-                    return SingleChildScrollView(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: constraint.maxHeight),
-                        child: IntrinsicHeight(
-                          child: NavigationRail(
-                            extended: true,
-                            backgroundColor: Colors.white,
-                            elevation: 5,
-                            selectedIndex: _selectedIndex,
-                            onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
-                            selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
-                            unselectedIconTheme: const IconThemeData(color: Colors.grey, size: 24),
-                            selectedLabelTextStyle: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold),
-                            unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                            destinations: menuItens,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                ),
-                
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.all(20),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2)],
-                    ),
-                    child: _selectedIndex < telas.length 
-                      ? telas[_selectedIndex] 
-                      : const Center(child: Text("Tela em construção...")),
-                  ),
-                ),
-              ],
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]),
+              child: _selectedIndex < telas.length ? telas[_selectedIndex] : const Center(child: Text("Em construção")),
             ),
           ),
         ],
