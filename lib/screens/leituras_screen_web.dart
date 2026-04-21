@@ -7,7 +7,9 @@ import '../services/api_service_web.dart';
 
 class LeiturasScreenWeb extends StatefulWidget {
   final int tenantId;
-  const LeiturasScreenWeb({super.key, required this.tenantId});
+  final bool filtroInicialAuditoria; // NOVO: Recebe a ordem lá do Dashboard
+
+  const LeiturasScreenWeb({super.key, required this.tenantId, this.filtroInicialAuditoria = false});
 
   @override
   State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
@@ -18,7 +20,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   
   List<dynamic> _leiturasBrutas = [];
   List<dynamic> _leiturasFiltradas = [];
-  
   List<dynamic> _blocos = [];
   List<String> _andares = [];
   List<dynamic> _unidades = [];
@@ -29,10 +30,14 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   
   late DateTimeRange _dataSelecionada;
   bool _isLoading = true;
+  bool _mostrarApenasAlertas = false; // NOVO: Controle de tela para discrepâncias
 
   @override
   void initState() {
     super.initState();
+    // Se veio do botão "Auditar Agora", já liga a chave vermelha
+    _mostrarApenasAlertas = widget.filtroInicialAuditoria;
+
     // Define o período padrão: do dia 01 até o último dia do mês atual
     DateTime now = DateTime.now();
     _dataSelecionada = DateTimeRange(
@@ -125,9 +130,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     try {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-      
       List<dynamic> dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
-      
       if (dados.isEmpty && _selectedBloco != null) {
         dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
       }
@@ -185,7 +188,14 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         bool passaUnidade = true;
         if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
 
-        return passaData && passaBloco && passaAndar && passaUnidade;
+        // NOVO: Aplica o filtro de Alertas se a chave estiver ativada
+        bool passaStatus = true;
+        if (_mostrarApenasAlertas) {
+          String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
+          passaStatus = status.contains('ALERTA') || status.contains('DISCREPÂNCIA');
+        }
+
+        return passaData && passaBloco && passaAndar && passaUnidade && passaStatus;
       }).toList();
     });
   }
@@ -193,7 +203,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _selecionarPeriodo() async {
     DateTime inicioTemp = _dataSelecionada.start;
     DateTime fimTemp = _dataSelecionada.end;
-    
     await showDialog(
       context: context,
       builder: (BuildContext ctx) {
@@ -268,7 +277,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   }
 
   // ============================================================
-  // FUNÇÃO NOVA: ABRIR POPUP PARA EDITAR LEITURA NORMAL
+  // FUNÇÃO DE EDITAR LEITURA NORMAL
   // ============================================================
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
@@ -358,10 +367,31 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                 const Text('Visualize e filtre o histórico de medições do condomínio.', style: TextStyle(color: Colors.grey)),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
-              child: Text("Total Listado: ${_leiturasFiltradas.length}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                // NOVO: Chave vermelha para ver somente os erros!
+                Row(
+                  children: [
+                    Switch(
+                      value: _mostrarApenasAlertas,
+                      activeColor: Colors.red,
+                      onChanged: (val) {
+                        setState(() {
+                          _mostrarApenasAlertas = val;
+                          _aplicarFiltrosLocais(); // Filtra a tabela instantaneamente
+                        });
+                      },
+                    ),
+                    const Text("Somente Discrepâncias", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(width: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                  decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
+                  child: Text("Total Listado: ${_leiturasFiltradas.length}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+                ),
+              ],
             )
           ],
         ),
@@ -523,11 +553,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                               _buildHeaderCell('Leitura Atual', flex: 2),
                               _buildHeaderCell('Consumo', flex: 2, color: Colors.deepOrange),
                               _buildHeaderCell('Status da Leitura', flex: 2, color: Colors.blue[900]),
-                              _buildHeaderCell('Ações', flex: 1, color: Colors.blue[900]), // <--- NOVA COLUNA DE AÇÕES
+                              _buildHeaderCell('Ações', flex: 1, color: Colors.blue[900]),
                             ],
                           ),
                         ),
                         const Divider(height: 1, thickness: 1),
+                        
                         // LINHAS DA TABELA
                         Expanded(
                           child: ListView.separated(
@@ -559,7 +590,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                     _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
                                     
-                                    // NOVO BOTÃO DE AÇÃO NA LINHA
+                                    // BOTÃO DE AÇÃO NA LINHA (LÁPIS DE EDIÇÃO)
                                     _buildDataCell(
                                       Align(
                                         alignment: Alignment.centerLeft,

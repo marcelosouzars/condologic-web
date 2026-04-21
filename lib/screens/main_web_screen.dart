@@ -28,6 +28,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
   // Variáveis Multitenant
   List<dynamic> _meusCondominios = [];
   Map<String, dynamic>? _condominioSelecionado;
+  
+  // NOVO: Controle de filtro de auditoria
+  bool _ativarFiltroAuditoria = false;
 
   @override
   void initState() {
@@ -206,6 +209,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
                     _condominioSelecionado = cond;
                     _usuarioLogado!['tenant_id'] = cond['id'];
                     _selectedIndex = 0; 
+                    _ativarFiltroAuditoria = false; // Reseta o filtro ao trocar o prédio
                   });
                   // Salva a nova escolha no cofre para o F5 não perder
                   await ApiServiceWeb().salvarSessao(_usuarioLogado!);
@@ -247,10 +251,24 @@ class _MainWebScreenState extends State<MainWebScreen> {
     // sempre que o `tenantIdAtual` mudar no seletor de condomínios!
     // ================================================================================
     List<Widget> telas = [
-      DashboardScreenWeb(key: ValueKey('dash_$tenantIdAtual'), usuarioLogado: _usuarioLogado),
+      DashboardScreenWeb(
+        key: ValueKey('dash_$tenantIdAtual'), 
+        usuarioLogado: _usuarioLogado,
+        // NOVO: A comunicação do botão "Auditar Agora"
+        onAuditarClique: () {
+          setState(() {
+            _selectedIndex = 3; // Pula direto pra aba de Leituras (índice 3 na sua lista)
+            _ativarFiltroAuditoria = true; // Ativa a chave mestre do filtro vermelho
+          });
+        },
+      ),
       _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtual'), condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
       UsuariosScreenWeb(key: ValueKey('users_$tenantIdAtual')), 
-      LeiturasScreenWeb(key: ValueKey('leituras_$tenantIdAtual'), tenantId: tenantIdAtual),
+      LeiturasScreenWeb(
+        key: ValueKey('leituras_${tenantIdAtual}_$_ativarFiltroAuditoria'), // O Key novo garante que a tela atualize o filtro
+        tenantId: tenantIdAtual,
+        filtroInicialAuditoria: _ativarFiltroAuditoria,
+      ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
     ];
@@ -291,7 +309,12 @@ class _MainWebScreenState extends State<MainWebScreen> {
             extended: true,
             backgroundColor: Colors.white,
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
+            onDestinationSelected: (int index) {
+              setState(() {
+                _selectedIndex = index;
+                if (index != 3) _ativarFiltroAuditoria = false; // Desliga o filtro se sair da tela de leituras
+              });
+            },
             selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
             destinations: menuItens,
           ),
