@@ -29,7 +29,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   List<dynamic> _meusCondominios = [];
   Map<String, dynamic>? _condominioSelecionado;
   
-  // NOVO: Controle de filtro de auditoria
+  // Controle de filtro de auditoria
   bool _ativarFiltroAuditoria = false;
 
   @override
@@ -38,12 +38,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
     _carregarUsuarioECondominios();
   }
 
-  // =============================================================
-  // MÁGICA DO F5: CARREGA E MANTÉM A SESSÃO ATIVA
-  // =============================================================
+  // ===========================================================================
+  // MÁGICA DO CARREGAMENTO: FORÇA O ISOLAMENTO DO SÍNDICO
+  // ===========================================================================
   Future<void> _carregarUsuarioECondominios() async {
     final api = ApiServiceWeb();
-    // Recupera do cofre o que estava salvo
     final userSessao = await api.recuperarSessao();
     
     if (userSessao != null) {
@@ -51,29 +50,48 @@ class _MainWebScreenState extends State<MainWebScreen> {
       
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
+      bool isMaster = (nivel?.toLowerCase() == 'master');
       
       try {
         final dados = await api.getCondominios(usuarioId: userId, nivel: nivel);
         if (mounted) {
           setState(() {
             _meusCondominios = dados;
+
             if (_meusCondominios.isNotEmpty) {
-              // Verifica se já tínhamos um condomínio selecionado antes do F5
-              int? ultimoTenantId = _usuarioLogado?['tenant_id'];
+              // 1. Descobrimos qual o condomínio "oficial" deste usuário no banco
+              int? tenantIdDoPerfil = _usuarioLogado?['tenant_id'];
               
-              if (ultimoTenantId != null) {
+              if (!isMaster && tenantIdDoPerfil != null) {
+                // SE FOR SÍNDICO: Forçamos a seleção do condomínio que o Master atribuiu a ele
                 try {
-                  _condominioSelecionado = _meusCondominios.firstWhere((c) => c['id'] == ultimoTenantId);
+                  _condominioSelecionado = _meusCondominios.firstWhere(
+                    (c) => c['id'] == tenantIdDoPerfil,
+                    orElse: () => _meusCondominios[0]
+                  );
                 } catch (e) {
                   _condominioSelecionado = _meusCondominios[0];
                 }
               } else {
-                _condominioSelecionado = _meusCondominios[0];
+                // SE FOR MASTER: Tenta recuperar o último que ele estava olhando ou pega o primeiro
+                int? ultimoVisto = _usuarioLogado?['tenant_id_sessao']; 
+                if (ultimoVisto != null) {
+                   try {
+                    _condominioSelecionado = _meusCondominios.firstWhere((c) => c['id'] == ultimoVisto);
+                  } catch (e) {
+                    _condominioSelecionado = _meusCondominios[0];
+                  }
+                } else {
+                  _condominioSelecionado = _meusCondominios[0];
+                }
               }
               
-              // Sincroniza o usuário logado com o condomínio ativo
-              _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
-              api.salvarSessao(_usuarioLogado!);
+              // 2. Sincroniza a sessão ativa com o condomínio selecionado
+              if (_condominioSelecionado != null) {
+                _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
+                _usuarioLogado!['tenant_id_sessao'] = _condominioSelecionado!['id'];
+                api.salvarSessao(_usuarioLogado!);
+              }
             }
             _loading = false;
           });
@@ -82,7 +100,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         if (mounted) setState(() => _loading = false);
       }
     } else {
-      // Se não tem nada no cofre, volta pro login
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreenWeb()));
       });
@@ -208,10 +225,10 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   setState(() {
                     _condominioSelecionado = cond;
                     _usuarioLogado!['tenant_id'] = cond['id'];
+                    _usuarioLogado!['tenant_id_sessao'] = cond['id'];
                     _selectedIndex = 0; 
-                    _ativarFiltroAuditoria = false; // Reseta o filtro ao trocar o prédio
+                    _ativarFiltroAuditoria = false; 
                   });
-                  // Salva a nova escolha no cofre para o F5 não perder
                   await ApiServiceWeb().salvarSessao(_usuarioLogado!);
                   if (mounted) Navigator.pop(ctx);
                 },
@@ -231,8 +248,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
-    int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
-
+    int tenantIdAtivo = _condominioSelecionado?['id'] ?? _usuarioLogado?['tenant_id'] ?? 1;
+    
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
@@ -241,40 +258,39 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
     ];
-
+    
     if (isMaster) {
       menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
     }
 
     // ================================================================================
-    // MÁGICA DO REFRESH IMEDIATO: O `ValueKey` força as telas a recarregarem do zero
-    // sempre que o `tenantIdAtual` mudar no seletor de condomínios!
+    // A CORREÇÃO DO RENDER ESTÁ AQUI: O <Widget> FORÇA A TIPAGEM CORRETA
     // ================================================================================
-    List<Widget> telas = [
+    List<Widget> telas = <Widget>[
       DashboardScreenWeb(
-        key: ValueKey('dash_$tenantIdAtual'), 
+        key: ValueKey('dash_$tenantIdAtivo'), 
         usuarioLogado: _usuarioLogado,
-        // NOVO: A comunicação do botão "Auditar Agora"
         onAuditarClique: () {
           setState(() {
-            _selectedIndex = 3; // Pula direto pra aba de Leituras (índice 3 na sua lista)
-            _ativarFiltroAuditoria = true; // Ativa a chave mestre do filtro vermelho
+            _selectedIndex = 3; 
+            _ativarFiltroAuditoria = true; 
           });
         },
       ),
-      _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtual'), condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
-      UsuariosScreenWeb(key: ValueKey('users_$tenantIdAtual')), 
+      _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtivo'), condominio: _condominioSelecionado!) : const Center(child: Text("Carregando...")),
+      UsuariosScreenWeb(key: ValueKey('users_$tenantIdAtivo')), 
       LeiturasScreenWeb(
-        key: ValueKey('leituras_${tenantIdAtual}_$_ativarFiltroAuditoria'), // O Key novo garante que a tela atualize o filtro
-        tenantId: tenantIdAtual,
+        key: ValueKey('leituras_${tenantIdAtivo}_$_ativarFiltroAuditoria'), 
+        tenantId: tenantIdAtivo,
         filtroInicialAuditoria: _ativarFiltroAuditoria,
       ),
-      RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
-      ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
+      RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtivo')),
+      ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtivo')), 
     ];
-
+    
+    // Agora o compilador sabe que a lista aceita qualquer Widget perfeitamente
     if (isMaster) {
-      telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtual'), usuarioLogado: _usuarioLogado));
+      telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtivo'), usuarioLogado: _usuarioLogado));
     }
 
     return Scaffold(
@@ -285,11 +301,14 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
-          IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
+          if (isMaster || _meusCondominios.length > 1)
+            IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
+          
+          const SizedBox(width: 15),
           Center(
             child: ActionChip(
               avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-              label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+              label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'} ${isMaster ? '(Master)' : '(Síndico)'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
               backgroundColor: Colors.white,
               onPressed: _abrirModalAlterarSenha,
             ),
@@ -312,7 +331,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
             onDestinationSelected: (int index) {
               setState(() {
                 _selectedIndex = index;
-                if (index != 3) _ativarFiltroAuditoria = false; // Desliga o filtro se sair da tela de leituras
+                if (index != 3) _ativarFiltroAuditoria = false;
               });
             },
             selectedIconTheme: IconThemeData(color: Colors.blue[900], size: 30),
