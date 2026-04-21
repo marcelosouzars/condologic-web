@@ -250,6 +250,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
     int tenantIdAtivo = _condominioSelecionado?['id'] ?? _usuarioLogado?['tenant_id'] ?? 1;
     
+    // ================================================================================
+    // CORREÇÃO DO RENDER: COLLECTION IF
+    // Em vez de usar .add(), colocamos o "if" nativo do Dart dentro das listas!
+    // ================================================================================
+    
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
@@ -257,16 +262,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')),
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
+      if (isMaster) // Collection IF nativo
+        const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')),
     ];
-    
-    if (isMaster) {
-      menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
-    }
 
-    // ================================================================================
-    // A CORREÇÃO DO RENDER ESTÁ AQUI: O <Widget> FORÇA A TIPAGEM CORRETA
-    // ================================================================================
-    List<Widget> telas = <Widget>[
+    List<Widget> telas = [
       DashboardScreenWeb(
         key: ValueKey('dash_$tenantIdAtivo'), 
         usuarioLogado: _usuarioLogado,
@@ -286,12 +286,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
       ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtivo')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtivo')), 
+      if (isMaster) // Collection IF nativo - Fim dos erros de compilação!
+        CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtivo'), usuarioLogado: _usuarioLogado),
     ];
-    
-    // Agora o compilador sabe que a lista aceita qualquer Widget perfeitamente
-    if (isMaster) {
-      telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtivo'), usuarioLogado: _usuarioLogado));
-    }
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
