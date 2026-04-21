@@ -39,7 +39,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   }
 
   // =============================================================
-  // MÁGICA DO F5 E ISOLAMENTO RAIZ DO SÍNDICO
+  // MÁGICA DO F5: CARREGA E MANTÉM A SESSÃO ATIVA
   // =============================================================
   Future<void> _carregarUsuarioECondominios() async {
     final api = ApiServiceWeb();
@@ -51,51 +51,29 @@ class _MainWebScreenState extends State<MainWebScreen> {
       
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
-      bool isMaster = (nivel?.toLowerCase() == 'master');
       
       try {
         final dados = await api.getCondominios(usuarioId: userId, nivel: nivel);
         if (mounted) {
           setState(() {
-            
-            // ISOLAMENTO DE ACESSO
-            if (isMaster) {
-              _meusCondominios = dados; // Master enxerga todos os condomínios
-            } else {
-              // Síndico SÓ enxerga os condomínios onde o nome dele está cadastrado!
-              String meuNome = _usuarioLogado!['nome'].toString().trim().toLowerCase();
-              _meusCondominios = dados.where((c) {
-                String nomeSindico = (c['nome_sindico'] ?? '').toString().trim().toLowerCase();
-                return nomeSindico == meuNome;
-              }).toList();
-              
-              // Fallback: se o backend já mandou filtrado 100% certo e o nome não bateu
-              if (_meusCondominios.isEmpty && dados.isNotEmpty) {
-                _meusCondominios = dados;
-              }
-            }
-
+            _meusCondominios = dados;
             if (_meusCondominios.isNotEmpty) {
+              // Verifica se já tínhamos um condomínio selecionado antes do F5
               int? ultimoTenantId = _usuarioLogado?['tenant_id'];
               
-              if (isMaster && ultimoTenantId != null) {
-                // Se for Master, tenta manter o último condomínio que ele estava olhando
+              if (ultimoTenantId != null) {
                 try {
                   _condominioSelecionado = _meusCondominios.firstWhere((c) => c['id'] == ultimoTenantId);
                 } catch (e) {
                   _condominioSelecionado = _meusCondominios[0];
                 }
               } else {
-                // SE FOR SÍNDICO: Ignora o tenant_id de fábrica (que leva pro master) 
-                // e força o sistema a carregar o primeiro condomínio da LISTA DELE!
                 _condominioSelecionado = _meusCondominios[0];
               }
               
-              // Sincroniza o usuário logado com o condomínio real e ativo dele
+              // Sincroniza o usuário logado com o condomínio ativo
               _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
               api.salvarSessao(_usuarioLogado!);
-            } else {
-               _condominioSelecionado = null; // Síndico sem condomínio atribuído
             }
             _loading = false;
           });
@@ -253,8 +231,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
-    int tenantIdAtual = _condominioSelecionado?['id'] ?? _usuarioLogado?['tenant_id'] ?? 1;
-    
+    int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
+
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
@@ -263,36 +241,38 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
     ];
-    
+
     if (isMaster) {
       menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
     }
 
     // ================================================================================
-    // MÁGICA DO REFRESH IMEDIATO
+    // MÁGICA DO REFRESH IMEDIATO: O `ValueKey` força as telas a recarregarem do zero
+    // sempre que o `tenantIdAtual` mudar no seletor de condomínios!
     // ================================================================================
     List<Widget> telas = [
       DashboardScreenWeb(
         key: ValueKey('dash_$tenantIdAtual'), 
         usuarioLogado: _usuarioLogado,
+        // NOVO: A comunicação do botão "Auditar Agora"
         onAuditarClique: () {
           setState(() {
-            _selectedIndex = 3; // Pula direto pra aba de Leituras
-            _ativarFiltroAuditoria = true; // Ativa a chave mestre
+            _selectedIndex = 3; // Pula direto pra aba de Leituras (índice 3 na sua lista)
+            _ativarFiltroAuditoria = true; // Ativa a chave mestre do filtro vermelho
           });
         },
       ),
-      _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtual'), condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio ou peça vinculação ao Master.")),
+      _condominioSelecionado != null ? DetalheCondominioWeb(key: ValueKey('detalhe_$tenantIdAtual'), condominio: _condominioSelecionado!) : const Center(child: Text("Selecione um condomínio.")),
       UsuariosScreenWeb(key: ValueKey('users_$tenantIdAtual')), 
       LeiturasScreenWeb(
-        key: ValueKey('leituras_${tenantIdAtual}_$_ativarFiltroAuditoria'), 
+        key: ValueKey('leituras_${tenantIdAtual}_$_ativarFiltroAuditoria'), // O Key novo garante que a tela atualize o filtro
         tenantId: tenantIdAtual,
         filtroInicialAuditoria: _ativarFiltroAuditoria,
       ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
     ];
-    
+
     if (isMaster) {
       telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtual'), usuarioLogado: _usuarioLogado));
     }
@@ -305,16 +285,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
-          // Mostra o botão de trocar condomínio APENAS se tiver mais de 1 (útil para Síndicos Profissionais ou Master)
-          if (_meusCondominios.length > 1)
-            IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
-          
-          const SizedBox(width: 15),
+          IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
           Center(
             child: ActionChip(
               avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-              // Mostra se o cara é o Chefe (Master) ou Síndico para você não ter mais dúvidas de quem está logado kkkk
-              label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'} ${isMaster ? '(Master)' : '(Síndico)'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+              label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
               backgroundColor: Colors.white,
               onPressed: _abrirModalAlterarSenha,
             ),
