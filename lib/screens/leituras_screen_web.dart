@@ -39,7 +39,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
     DateTime now = DateTime.now();
-    
     // MÁGICA AQUI: Se for auditoria, abre a data desde o ano passado para não perder nenhum alerta antigo!
     if (_mostrarApenasAlertas) {
       _dataSelecionada = DateTimeRange(
@@ -287,7 +286,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
     bool isSaving = false;
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -346,7 +344,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     if (valorController.text.isEmpty) return;
                     setStateDialog(() => isSaving = true);
                     try {
-                      double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
+                       double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
                       await _apiService.corrigirLeitura(leitura['id'], novoValor);
                       if (mounted) {
                         Navigator.pop(ctx);
@@ -575,12 +573,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
                               Color statusColor = Colors.green;
                               String statusTexto = (l['status_leitura'] ?? 'Concluída').toString().toUpperCase();
-                              
                               // Cores fiéis ao Status
                               if (statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP')) statusColor = Colors.red;
                               else if (statusTexto.contains('CORRIGIDA')) statusColor = Colors.purple;
                               else if (statusTexto.contains('PENDENTE')) statusColor = Colors.orange;
-
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                                 child: Row(

@@ -232,7 +232,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
 
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
     int tenantIdAtual = _usuarioLogado?['tenant_id'] ?? 1;
-    
+
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
@@ -241,7 +241,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
     ];
-    
+
     if (isMaster) {
       menuItens.add(const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')));
     }
@@ -272,7 +272,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
     ];
-    
+
     if (isMaster) {
       telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtual'), usuarioLogado: _usuarioLogado));
     }

@@ -202,7 +202,7 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                         ]),
                         const SizedBox(height: 15),
                         
-                        // === O DROPDOWN MÁGICO DE SÍNDICOS (COM TIPAGEM CORRIGIDA) ===
+                        // === O DROPDOWN MÁGICO DE SÍNDICOS ===
                         if (_sindicosCadastrados.isNotEmpty) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -223,7 +223,6 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                                   value: null, 
                                   child: Text("Digitar dados do Síndico manualmente", style: TextStyle(fontStyle: FontStyle.italic))
                                 ),
-                                // AQUI ESTÁ A CORREÇÃO: Explicitando o tipo <Map<String, dynamic>>
                                 ..._sindicosCadastrados.map((s) => DropdownMenuItem<Map<String, dynamic>>(
                                   value: s as Map<String, dynamic>, 
                                   child: Text(s['nome'])
