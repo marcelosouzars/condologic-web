@@ -64,17 +64,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     return v.toStringAsFixed(3).replaceAll('.', ',');
   }
 
-  Widget _buildHeaderCell(String text, {int flex = 1, Color? color}) {
-    return Expanded(
-      flex: flex,
-      child: Text(text, style: TextStyle(fontWeight: FontWeight.bold, color: color ?? Colors.black87, fontSize: 13)),
-    );
-  }
-
-  Widget _buildDataCell(Widget content, {int flex = 1}) {
-    return Expanded(flex: flex, child: content);
-  }
-
   Widget _buildLabelAndField(String label, Widget field) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,36 +542,32 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
               : _leiturasFiltradas.isEmpty 
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Nenhuma leitura corresponde aos filtros selecionados.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
+                // =========================================================================
+                // AQUI ACONTECEU A BLINDAGEM DA TABELA PARA NÃO "ESMAGAR" O BOTÃO
+                // =========================================================================
                 : Card( 
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
-                          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
-                          child: Row(
-                            children: [
-                              _buildHeaderCell('Data / Hora', flex: 2),
-                              _buildHeaderCell('Bloco / Unidade', flex: 2),
-                              _buildHeaderCell('Medidor', flex: 2),
-                              _buildHeaderCell('Leitura Ant.', flex: 2),
-                              _buildHeaderCell('Leitura Atual', flex: 2),
-                              _buildHeaderCell('Consumo', flex: 2, color: Colors.deepOrange),
-                              _buildHeaderCell('Status da Leitura', flex: 2, color: Colors.blue[900]),
-                              
-                              // MÁGICA 1: Dobramos a flexibilidade (largura) do cabeçalho de Ações para 2!
-                              _buildHeaderCell('Ações', flex: 2, color: Colors.blue[900]),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.vertical, // Rolagem para baixo
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal, // MÁGICA: Rolagem para o lado! Nunca mais amassa o botão!
+                          child: DataTable(
+                            headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
+                            columnSpacing: 30, // Espaço confortável entre colunas
+                            columns: const [
+                              DataColumn(label: Text('Data / Hora', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Bloco / Unidade', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Medidor', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Ant.', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Atual', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Consumo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
+                              DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+                              DataColumn(label: Text('Ações', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
                             ],
-                          ),
-                        ),
-                        const Divider(height: 1, thickness: 1),
-                        Expanded(
-                          child: ListView.separated(
-                            itemCount: _leiturasFiltradas.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final l = _leiturasFiltradas[index];
+                            rows: _leiturasFiltradas.map((l) {
                               Color? corFundo = Colors.blue[600];
                               String tipoStr = l['tipo_medidor']?.toString().toLowerCase() ?? '';
                               if (tipoStr.contains('quente')) corFundo = Colors.red[600];
@@ -594,42 +579,38 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                               else if (statusTexto.contains('CORRIGIDA')) statusColor = Colors.purple;
                               else if (statusTexto.contains('PENDENTE')) statusColor = Colors.orange;
 
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                child: Row(
-                                  children: [
-                                    _buildDataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-', style: const TextStyle(fontSize: 13)), flex: 2),
-                                    _buildDataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), flex: 2),
-                                    _buildDataCell(Align(alignment: Alignment.centerLeft, child: Chip(label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: corFundo, padding: EdgeInsets.zero)), flex: 2),
-                                    _buildDataCell(Text(_formatarMedicao(l['leitura_anterior']), style: const TextStyle(fontSize: 13)), flex: 2),
-                                    _buildDataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), flex: 2),
-                                    _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
-                                    _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
-                                    
-                                    // MÁGICA 2: Trocamos o ícone fraco por um BOTÃO ENORME e flexibilidade 2!
-                                    _buildDataCell(
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: ElevatedButton.icon(
-                                          icon: const Icon(Icons.edit, color: Colors.white, size: 16),
-                                          label: const Text('EDITAR', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.blue[700],
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                          ),
-                                          onPressed: () => _abrirModalEdicao(l),
-                                        ),
+                              return DataRow(
+                                color: statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP') 
+                                    ? MaterialStateProperty.all(Colors.red[50]) 
+                                    : null,
+                                cells: [
+                                  DataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-', style: const TextStyle(fontSize: 13))),
+                                  DataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                                  DataCell(Chip(label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: corFundo, padding: EdgeInsets.zero)),
+                                  DataCell(Text(_formatarMedicao(l['leitura_anterior']), style: const TextStyle(fontSize: 13))),
+                                  DataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                                  DataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13))),
+                                  DataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12))),
+                                  
+                                  // O SEU BOTÃO IMENSO E CLICÁVEL AQUI
+                                  DataCell(
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                      label: const Text('EDITAR', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue[700],
+                                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                       ),
-                                      flex: 2
+                                      onPressed: () => _abrirModalEdicao(l),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               );
-                            },
+                            }).toList(),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
         ),
