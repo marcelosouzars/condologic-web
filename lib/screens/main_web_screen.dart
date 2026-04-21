@@ -25,11 +25,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
   Map<String, dynamic>? _usuarioLogado;
   bool _loading = true;
   
-  // Variáveis Multitenant
   List<dynamic> _meusCondominios = [];
   Map<String, dynamic>? _condominioSelecionado;
   
-  // Controle de filtro de auditoria
   bool _ativarFiltroAuditoria = false;
 
   @override
@@ -38,9 +36,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
     _carregarUsuarioECondominios();
   }
 
-  // ===========================================================================
-  // MÁGICA DO CARREGAMENTO: FORÇA O ISOLAMENTO DO SÍNDICO
-  // ===========================================================================
   Future<void> _carregarUsuarioECondominios() async {
     final api = ApiServiceWeb();
     final userSessao = await api.recuperarSessao();
@@ -59,11 +54,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
             _meusCondominios = dados;
 
             if (_meusCondominios.isNotEmpty) {
-              // 1. Descobrimos qual o condomínio "oficial" deste usuário no banco
               int? tenantIdDoPerfil = _usuarioLogado?['tenant_id'];
               
               if (!isMaster && tenantIdDoPerfil != null) {
-                // SE FOR SÍNDICO: Forçamos a seleção do condomínio que o Master atribuiu a ele
                 try {
                   _condominioSelecionado = _meusCondominios.firstWhere(
                     (c) => c['id'] == tenantIdDoPerfil,
@@ -73,7 +66,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   _condominioSelecionado = _meusCondominios[0];
                 }
               } else {
-                // SE FOR MASTER: Tenta recuperar o último que ele estava olhando ou pega o primeiro
                 int? ultimoVisto = _usuarioLogado?['tenant_id_sessao']; 
                 if (ultimoVisto != null) {
                    try {
@@ -86,7 +78,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
                 }
               }
               
-              // 2. Sincroniza a sessão ativa com o condomínio selecionado
               if (_condominioSelecionado != null) {
                 _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
                 _usuarioLogado!['tenant_id_sessao'] = _condominioSelecionado!['id'];
@@ -250,11 +241,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
     int tenantIdAtivo = _condominioSelecionado?['id'] ?? _usuarioLogado?['tenant_id'] ?? 1;
     
-    // ================================================================================
-    // CORREÇÃO DO RENDER: COLLECTION IF
-    // Em vez de usar .add(), colocamos o "if" nativo do Dart dentro das listas!
-    // ================================================================================
-    
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
       const NavigationRailDestination(icon: Icon(Icons.edit_document), selectedIcon: Icon(Icons.edit_document), label: Text('Cadastro')),
@@ -262,11 +248,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')),
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
-      if (isMaster) // Collection IF nativo
+      if (isMaster) 
         const NavigationRailDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: Text('Master Admin')),
     ];
 
-    List<Widget> telas = [
+    List<Widget> telas = <Widget>[
       DashboardScreenWeb(
         key: ValueKey('dash_$tenantIdAtivo'), 
         usuarioLogado: _usuarioLogado,
@@ -286,7 +272,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtivo')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtivo')), 
-      if (isMaster) // Collection IF nativo - Fim dos erros de compilação!
+      if (isMaster) 
         CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtivo'), usuarioLogado: _usuarioLogado),
     ];
 
