@@ -7,7 +7,7 @@ import '../services/api_service_web.dart';
 
 class LeiturasScreenWeb extends StatefulWidget {
   final int tenantId;
-  final bool filtroInicialAuditoria; // NOVO: Recebe a ordem lá do Dashboard
+  final bool filtroInicialAuditoria;
 
   const LeiturasScreenWeb({super.key, required this.tenantId, this.filtroInicialAuditoria = false});
 
@@ -30,21 +30,30 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   
   late DateTimeRange _dataSelecionada;
   bool _isLoading = true;
-  bool _mostrarApenasAlertas = false; // NOVO: Controle de tela para discrepâncias
+  bool _mostrarApenasAlertas = false;
 
   @override
   void initState() {
     super.initState();
-    // Se veio do botão "Auditar Agora", já liga a chave vermelha
+    // Liga a chave vermelha se veio do Dashboard
     _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
-    // Define o período padrão: do dia 01 até o último dia do mês atual
     DateTime now = DateTime.now();
-    _dataSelecionada = DateTimeRange(
-      start: DateTime(now.year, now.month, 1),
-      end: DateTime(now.year, now.month + 1, 0),
-    );
-    // Carrega blocos e já dispara a busca automática do mês atual
+    
+    // MÁGICA AQUI: Se for auditoria, abre a data desde o ano passado para não perder nenhum alerta antigo!
+    if (_mostrarApenasAlertas) {
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(now.year - 1, 1, 1), // Volta lá para o ano anterior
+        end: DateTime(now.year, now.month + 1, 0),
+      );
+    } else {
+      // Padrão normal: apenas o mês atual
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: DateTime(now.year, now.month + 1, 0),
+      );
+    }
+    
     _inicializarTela();
   }
 
@@ -70,7 +79,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     return Expanded(flex: flex, child: content);
   }
 
-  // --- COMPONENTE DE RÓTULO EXTERNO (DESIGN APROVADO PELO SÓCIO) ---
   Widget _buildLabelAndField(String label, Widget field) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,11 +196,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         bool passaUnidade = true;
         if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
 
-        // NOVO: Aplica o filtro de Alertas se a chave estiver ativada
+        // VALIDAÇÃO BLINDADA DO STATUS DE ALERTA
         bool passaStatus = true;
         if (_mostrarApenasAlertas) {
           String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
-          passaStatus = status.contains('ALERTA') || status.contains('DISCREPÂNCIA');
+          // Cobre qualquer variação de texto vinda do banco de dados
+          passaStatus = status.contains('ALERTA') || status.contains('DISCREP');
         }
 
         return passaData && passaBloco && passaAndar && passaUnidade && passaStatus;
@@ -262,7 +271,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       _dataSelecionada = DateTimeRange(start: inicioTemp, end: fimTemp);
                     });
                     Navigator.pop(ctx);
-                    // Dispara a busca automática ao confirmar nova data
                     _buscarDados();
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
@@ -276,9 +284,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
-  // ============================================================
-  // FUNÇÃO DE EDITAR LEITURA NORMAL
-  // ============================================================
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
     bool isSaving = false;
@@ -295,23 +300,35 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                 children: [
                   Icon(Icons.edit_note, color: Colors.blue[900]),
                   const SizedBox(width: 10),
-                  Text("Editar Leitura - Apto ${leitura['unidade'] ?? leitura['identificacao'] ?? '-'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text("Corrigir Leitura - Apto ${leitura['unidade'] ?? leitura['identificacao'] ?? '-'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
               ),
               content: SizedBox(
-                width: 300,
+                width: 320,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Medidor: ${(leitura['tipo_medidor'] ?? '').toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 5),
-                    Text("Data atual: ${leitura['data_formatada'] ?? leitura['data_leitura'] ?? '-'}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red[200]!)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Medidor: ${(leitura['tipo_medidor'] ?? '').toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                          Text("Leitura Anterior: ${_formatarMedicao(leitura['leitura_anterior'])} m³", style: const TextStyle(color: Colors.black87)),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     TextField(
                       controller: valorController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: "Novo Valor Lido (m³)", border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: "Novo Valor Lido no Relógio (m³)", 
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.speed)
+                      ),
                     ),
                     if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
                   ],
@@ -322,26 +339,26 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                   onPressed: isSaving ? null : () => Navigator.pop(ctx),
                   child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
                 ),
-                ElevatedButton(
+                ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  icon: const Icon(Icons.check, color: Colors.white),
                   onPressed: isSaving ? null : () async {
                     if (valorController.text.isEmpty) return;
                     setStateDialog(() => isSaving = true);
                     try {
                       double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
-                      // Chama a API para corrigir a leitura
                       await _apiService.corrigirLeitura(leitura['id'], novoValor);
                       if (mounted) {
                         Navigator.pop(ctx);
-                        _buscarDados(); // Recarrega os dados da tabela
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada com sucesso!"), backgroundColor: Colors.green));
+                        _buscarDados(); 
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada e faturamento corrigido com sucesso!"), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       setStateDialog(() => isSaving = false);
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
                     }
                   },
-                  child: const Text("SALVAR ALTERAÇÃO", style: TextStyle(color: Colors.white)),
+                  label: const Text("SALVAR ALTERAÇÃO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )
               ],
             );
@@ -369,7 +386,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             ),
             Row(
               children: [
-                // NOVO: Chave vermelha para ver somente os erros!
                 Row(
                   children: [
                     Switch(
@@ -378,7 +394,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       onChanged: (val) {
                         setState(() {
                           _mostrarApenasAlertas = val;
-                          _aplicarFiltrosLocais(); // Filtra a tabela instantaneamente
+                          _aplicarFiltrosLocais();
                         });
                       },
                     ),
@@ -398,9 +414,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         
         const SizedBox(height: 20),
 
-        // ===============================================
-        // PAINEL DE FILTROS SUPERIOR
-        // ===============================================
         Card(
           elevation: 3,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -412,7 +425,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // 1. PERÍODO
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -428,7 +440,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
                     
-                    // 2. BLOCO
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -452,7 +463,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
                     
-                    // 3. ANDAR
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -478,7 +488,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
 
-                    // 4. UNIDADE
                     Expanded(
                       flex: 2,
                       child: _buildLabelAndField(
@@ -506,13 +515,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     ),
                     const SizedBox(width: 15),
 
-                    // BOTÃO BUSCAR DADOS
                     SizedBox(
                       height: 48,
                       child: ElevatedButton.icon(
                         onPressed: _buscarDados,
                         icon: const Icon(Icons.search, color: Colors.white),
-                        label: const Text('BUSCAR DADOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                        label: const Text('BUSCAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], padding: const EdgeInsets.symmetric(horizontal: 24)),
                       ),
                     ),
@@ -525,9 +533,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         
         const SizedBox(height: 20),
 
-        // ===============================================
-        // LISTAGEM DE DADOS (DATA GRID)
-        // ===============================================
         Expanded(
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
@@ -540,7 +545,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     child: Column(
                       children: [
-                        // CABEÇALHO DA TABELA
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
                           decoration: BoxDecoration(color: Colors.blue[50], borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
@@ -558,8 +562,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                           ),
                         ),
                         const Divider(height: 1, thickness: 1),
-                        
-                        // LINHAS DA TABELA
                         Expanded(
                           child: ListView.separated(
                             itemCount: _leiturasFiltradas.length,
@@ -571,10 +573,11 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                               if (tipoStr.contains('quente')) corFundo = Colors.red[600];
                               else if (tipoStr.contains('gas') || tipoStr.contains('gás')) corFundo = Colors.orange;
 
-                              // Formatação de cor para o Status
                               Color statusColor = Colors.green;
                               String statusTexto = (l['status_leitura'] ?? 'Concluída').toString().toUpperCase();
-                              if (statusTexto.contains('ALERTA')) statusColor = Colors.red;
+                              
+                              // Cores fiéis ao Status
+                              if (statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP')) statusColor = Colors.red;
                               else if (statusTexto.contains('CORRIGIDA')) statusColor = Colors.purple;
                               else if (statusTexto.contains('PENDENTE')) statusColor = Colors.orange;
 
@@ -590,13 +593,13 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                     _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
                                     
-                                    // BOTÃO DE AÇÃO NA LINHA (LÁPIS DE EDIÇÃO)
+                                    // AQUI ESTÁ O SEU BOTÃO (LÁPIS DE EDIÇÃO)
                                     _buildDataCell(
                                       Align(
                                         alignment: Alignment.centerLeft,
                                         child: IconButton(
                                           icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                                          tooltip: 'Alterar Leitura',
+                                          tooltip: 'Corrigir Leitura Manualmente',
                                           onPressed: () => _abrirModalEdicao(l),
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
