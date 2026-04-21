@@ -38,19 +38,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
     DateTime now = DateTime.now();
-    if (_mostrarApenasAlertas) {
-      // MÁGICA ATUALIZADA: Abre a busca desde o ano 2000! 
-      // Nenhum erro, por mais antigo que seja o teste, vai conseguir se esconder.
-      _dataSelecionada = DateTimeRange(
-        start: DateTime(2000, 1, 1), 
-        end: DateTime(now.year + 1, 12, 31),
-      );
-    } else {
-      _dataSelecionada = DateTimeRange(
-        start: DateTime(now.year, now.month, 1),
-        end: DateTime(now.year, now.month + 1, 0),
-      );
-    }
+    _dataSelecionada = DateTimeRange(
+      start: DateTime(now.year, now.month, 1),
+      end: DateTime(now.year, now.month + 1, 0),
+    );
     
     _inicializarTela();
   }
@@ -131,16 +122,26 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     }
   }
 
+  // =======================================================================
+  // O PULO DO GATO: BUSCAR OS DADOS NA ROTA CERTA!
+  // =======================================================================
   Future<void> _buscarDados() async {
     setState(() => _isLoading = true);
     try {
-      final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
-      final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-      
-      // Busca os dados do backend passando a data ampla
-      List<dynamic> dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
-      if (dados.isEmpty && _selectedBloco != null) {
-        dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
+      List<dynamic> dados = [];
+
+      if (_mostrarApenasAlertas) {
+        // Se a chave vermelha tá ligada, usamos a ROTA ESPECÍFICA de auditoria!
+        dados = await _apiService.getLeiturasAuditoria(widget.tenantId);
+      } else {
+        // Se a chave tá desligada, busca o fluxo normal por data
+        final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
+        final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
+        
+        dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+        if (dados.isEmpty && _selectedBloco != null) {
+          dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
+        }
       }
       
       if (mounted) {
@@ -161,10 +162,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   void _aplicarFiltrosLocais() {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
-        bool passaData = true;
         
-        // MÁGICA 2: Se a chave vermelha estiver ligada, ABORTA o filtro de data local.
-        // Mostra o erro independente do dia que aconteceu!
+        bool passaData = true;
+        // Se for alerta, a API já trouxe tudo. Ignora o calendário local!
         if (!_mostrarApenasAlertas) {
           try {
             String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
@@ -201,13 +201,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         bool passaUnidade = true;
         if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
 
-        bool passaStatus = true;
-        if (_mostrarApenasAlertas) {
-          String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
-          passaStatus = status.contains('ALERTA') || status.contains('DISCREP');
-        }
-
-        return passaData && passaBloco && passaAndar && passaUnidade && passaStatus;
+        return passaData && passaBloco && passaAndar && passaUnidade;
       }).toList();
     });
   }
@@ -240,7 +234,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       Expanded(
                         child: InkWell(
                           onTap: () async {
-                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
                             if (picked != null) setStateModal(() => inicioTemp = picked);
                           },
                           child: InputDecorator(decoration: const InputDecoration(labelText: "Data Inicial", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(inicioTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -252,7 +246,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       Expanded(
                         child: InkWell(
                           onTap: () async {
-                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
                             if (picked != null) setStateModal(() => fimTemp = picked);
                           },
                           child: InputDecorator(decoration: const InputDecoration(labelText: "Data Final", border: OutlineInputBorder(), prefixIcon: Icon(Icons.event, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(fimTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -396,8 +390,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       onChanged: (val) {
                         setState(() {
                           _mostrarApenasAlertas = val;
-                          _aplicarFiltrosLocais();
                         });
+                        // AGORA ELE BUSCA DA API IMEDIATAMENTE AO TROCAR A CHAVE!
+                        _buscarDados(); 
                       },
                     ),
                     const Text("Somente Discrepâncias", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -432,10 +427,17 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       child: _buildLabelAndField(
                         '1. Período de Análise',
                         InkWell(
-                          onTap: _selecionarPeriodo,
+                          onTap: _mostrarApenasAlertas ? null : _selecionarPeriodo,
                           child: InputDecorator(
-                            decoration: const InputDecoration(border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_month), isDense: true),
-                            child: Text("${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", style: const TextStyle(fontSize: 15)),
+                            decoration: InputDecoration(
+                              border: const OutlineInputBorder(), 
+                              prefixIcon: Icon(Icons.calendar_month, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87), 
+                              isDense: true
+                            ),
+                            child: Text(
+                              _mostrarApenasAlertas ? "Todo o período (Alertas Pendentes)" : "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", 
+                              style: TextStyle(fontSize: 15, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87)
+                            ),
                           ),
                         ),
                       ),
@@ -539,7 +541,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _leiturasBrutas.isEmpty 
-              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada para este período.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
               : _leiturasFiltradas.isEmpty 
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Nenhuma leitura corresponde aos filtros selecionados.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
                 : Card( 
