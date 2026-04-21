@@ -38,11 +38,17 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
     DateTime now = DateTime.now();
-    // Inicia buscando as leituras do mês atual
-    _dataSelecionada = DateTimeRange(
-      start: DateTime(now.year, now.month, 1),
-      end: DateTime(now.year, now.month + 1, 0),
-    );
+    if (_mostrarApenasAlertas) {
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(2000, 1, 1), 
+        end: DateTime(now.year + 1, 12, 31),
+      );
+    } else {
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: DateTime(now.year, now.month + 1, 0),
+      );
+    }
     
     _inicializarTela();
   }
@@ -126,13 +132,18 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _buscarDados() async {
     setState(() => _isLoading = true);
     try {
-      final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
-      final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-      
-      // Busca os dados do backend passando a data ampla
-      List<dynamic> dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
-      if (dados.isEmpty && _selectedBloco != null) {
-        dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
+      List<dynamic> dados = [];
+
+      if (_mostrarApenasAlertas) {
+        dados = await _apiService.getLeiturasAuditoria(widget.tenantId);
+      } else {
+        final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
+        final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
+        
+        dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+        if (dados.isEmpty && _selectedBloco != null) {
+          dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
+        }
       }
       
       if (mounted) {
@@ -155,23 +166,25 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
         bool passaData = true;
         
-        try {
-          String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
-          if (dataStr.isNotEmpty && dataStr != '-') {
-            DateTime? dtLeitura;
-            if (dataStr.contains('/')) {
-              final p = dataStr.split(' ')[0].split('/');
-              if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
-            } else if (dataStr.contains('-')) {
-              dtLeitura = DateTime.tryParse(dataStr);
+        if (!_mostrarApenasAlertas) {
+          try {
+            String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
+            if (dataStr.isNotEmpty && dataStr != '-') {
+              DateTime? dtLeitura;
+              if (dataStr.contains('/')) {
+                final p = dataStr.split(' ')[0].split('/');
+                if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+              } else if (dataStr.contains('-')) {
+                dtLeitura = DateTime.tryParse(dataStr);
+              }
+              if (dtLeitura != null) {
+                DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
+                DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
+                passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
+              }
             }
-            if (dtLeitura != null) {
-              DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
-              DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
-              passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
-            }
-          }
-        } catch (_) {} 
+          } catch (_) {} 
+        }
 
         bool passaBloco = true;
         if (_selectedBloco != null) {
@@ -275,14 +288,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
-  // =========================================================================
-  // AQUI ACONTECE A MÁGICA: A JANELA PARA EDITAR A LEITURA
-  // =========================================================================
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
-    // Carrega o valor atual da IA na caixinha de texto para o síndico alterar
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
     bool isSaving = false;
-    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -343,13 +351,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                     if (valorController.text.isEmpty) return;
                     setStateDialog(() => isSaving = true);
                     try {
-                      // Dispara para o backend para salvar o valor novo
                       double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
                       await _apiService.corrigirLeitura(leitura['id'], novoValor);
                       
                       if (mounted) {
                         Navigator.pop(ctx);
-                        _buscarDados(); // Recarrega a tabela para sumir o erro
+                        _buscarDados(); 
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada com sucesso!"), backgroundColor: Colors.green));
                       }
                     } catch (e) {
@@ -393,8 +400,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       onChanged: (val) {
                         setState(() {
                           _mostrarApenasAlertas = val;
-                          _aplicarFiltrosLocais();
                         });
+                        _buscarDados(); 
                       },
                     ),
                     const Text("Somente Discrepâncias", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -429,10 +436,17 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       child: _buildLabelAndField(
                         '1. Período de Análise',
                         InkWell(
-                          onTap: _selecionarPeriodo,
+                          onTap: _mostrarApenasAlertas ? null : _selecionarPeriodo,
                           child: InputDecorator(
-                            decoration: const InputDecoration(border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_month), isDense: true),
-                            child: Text("${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", style: const TextStyle(fontSize: 15)),
+                            decoration: InputDecoration(
+                              border: const OutlineInputBorder(), 
+                              prefixIcon: Icon(Icons.calendar_month, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87), 
+                              isDense: true
+                            ),
+                            child: Text(
+                              _mostrarApenasAlertas ? "Todo o período (Alertas Pendentes)" : "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", 
+                              style: TextStyle(fontSize: 15, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87)
+                            ),
                           ),
                         ),
                       ),
@@ -536,7 +550,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _leiturasBrutas.isEmpty 
-              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada para este período.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
               : _leiturasFiltradas.isEmpty 
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Nenhuma leitura corresponde aos filtros selecionados.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
                 : Card( 
@@ -557,8 +571,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                               _buildHeaderCell('Consumo', flex: 2, color: Colors.deepOrange),
                               _buildHeaderCell('Status da Leitura', flex: 2, color: Colors.blue[900]),
                               
-                              // AQUI COLOCAMOS O TÍTULO DA NOVA COLUNA
-                              _buildHeaderCell('Ações', flex: 1, color: Colors.blue[900]),
+                              // MÁGICA 1: Dobramos a flexibilidade (largura) do cabeçalho de Ações para 2!
+                              _buildHeaderCell('Ações', flex: 2, color: Colors.blue[900]),
                             ],
                           ),
                         ),
@@ -592,19 +606,22 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                     _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
                                     
-                                    // AQUI ENTRA O NOSSO BOTÃO DE LÁPIS (EDITAR)
+                                    // MÁGICA 2: Trocamos o ícone fraco por um BOTÃO ENORME e flexibilidade 2!
                                     _buildDataCell(
                                       Align(
                                         alignment: Alignment.centerLeft,
-                                        child: IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                                          tooltip: 'Corrigir Leitura Manualmente',
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                          label: const Text('EDITAR', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue[700],
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                          ),
                                           onPressed: () => _abrirModalEdicao(l),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
                                         ),
                                       ),
-                                      flex: 1
+                                      flex: 2
                                     ),
                                   ],
                                 ),
