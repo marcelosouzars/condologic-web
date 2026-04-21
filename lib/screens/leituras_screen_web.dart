@@ -35,18 +35,17 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   @override
   void initState() {
     super.initState();
-    // Liga a chave vermelha se veio do Dashboard
     _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
     DateTime now = DateTime.now();
-    // MÁGICA AQUI: Se for auditoria, abre a data desde o ano passado para não perder nenhum alerta antigo!
     if (_mostrarApenasAlertas) {
+      // MÁGICA ATUALIZADA: Abre a busca desde o ano 2000! 
+      // Nenhum erro, por mais antigo que seja o teste, vai conseguir se esconder.
       _dataSelecionada = DateTimeRange(
-        start: DateTime(now.year - 1, 1, 1), // Volta lá para o ano anterior
-        end: DateTime(now.year, now.month + 1, 0),
+        start: DateTime(2000, 1, 1), 
+        end: DateTime(now.year + 1, 12, 31),
       );
     } else {
-      // Padrão normal: apenas o mês atual
       _dataSelecionada = DateTimeRange(
         start: DateTime(now.year, now.month, 1),
         end: DateTime(now.year, now.month + 1, 0),
@@ -137,6 +136,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     try {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
+      
+      // Busca os dados do backend passando a data ampla
       List<dynamic> dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
       if (dados.isEmpty && _selectedBloco != null) {
         dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
@@ -161,23 +162,28 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
         bool passaData = true;
-        try {
-          String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
-          if (dataStr.isNotEmpty && dataStr != '-') {
-            DateTime? dtLeitura;
-            if (dataStr.contains('/')) {
-              final p = dataStr.split(' ')[0].split('/');
-              if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
-            } else if (dataStr.contains('-')) {
-              dtLeitura = DateTime.tryParse(dataStr);
+        
+        // MÁGICA 2: Se a chave vermelha estiver ligada, ABORTA o filtro de data local.
+        // Mostra o erro independente do dia que aconteceu!
+        if (!_mostrarApenasAlertas) {
+          try {
+            String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
+            if (dataStr.isNotEmpty && dataStr != '-') {
+              DateTime? dtLeitura;
+              if (dataStr.contains('/')) {
+                final p = dataStr.split(' ')[0].split('/');
+                if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+              } else if (dataStr.contains('-')) {
+                dtLeitura = DateTime.tryParse(dataStr);
+              }
+              if (dtLeitura != null) {
+                DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
+                DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
+                passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
+              }
             }
-            if (dtLeitura != null) {
-              DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
-              DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
-              passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
-            }
-          }
-        } catch (_) {} 
+          } catch (_) {} 
+        }
 
         bool passaBloco = true;
         if (_selectedBloco != null) {
@@ -195,11 +201,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         bool passaUnidade = true;
         if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
 
-        // VALIDAÇÃO BLINDADA DO STATUS DE ALERTA
         bool passaStatus = true;
         if (_mostrarApenasAlertas) {
           String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
-          // Cobre qualquer variação de texto vinda do banco de dados
           passaStatus = status.contains('ALERTA') || status.contains('DISCREP');
         }
 
@@ -236,7 +240,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       Expanded(
                         child: InkWell(
                           onTap: () async {
-                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
                             if (picked != null) setStateModal(() => inicioTemp = picked);
                           },
                           child: InputDecorator(decoration: const InputDecoration(labelText: "Data Inicial", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(inicioTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -248,7 +252,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       Expanded(
                         child: InkWell(
                           onTap: () async {
-                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
                             if (picked != null) setStateModal(() => fimTemp = picked);
                           },
                           child: InputDecorator(decoration: const InputDecoration(labelText: "Data Final", border: OutlineInputBorder(), prefixIcon: Icon(Icons.event, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(fimTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -573,10 +577,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
                               Color statusColor = Colors.green;
                               String statusTexto = (l['status_leitura'] ?? 'Concluída').toString().toUpperCase();
-                              // Cores fiéis ao Status
                               if (statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP')) statusColor = Colors.red;
                               else if (statusTexto.contains('CORRIGIDA')) statusColor = Colors.purple;
                               else if (statusTexto.contains('PENDENTE')) statusColor = Colors.orange;
+
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                                 child: Row(
@@ -589,7 +593,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                     _buildDataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13)), flex: 2),
                                     _buildDataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12)), flex: 2),
                                     
-                                    // AQUI ESTÁ O SEU BOTÃO (LÁPIS DE EDIÇÃO)
                                     _buildDataCell(
                                       Align(
                                         alignment: Alignment.centerLeft,
