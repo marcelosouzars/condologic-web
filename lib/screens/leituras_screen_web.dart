@@ -3,13 +3,19 @@ import '../services/api_service_web.dart';
 import 'package:intl/intl.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
-import 'package:excel/excel.dart' hide Border; // CORREÇÃO: Esconde o Border do Excel para evitar conflito
+import 'package:excel/excel.dart' hide Border;
 
 class LeiturasScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
-  final int? tenantId; // CORREÇÃO: Aceita o tenantId vindo do main_web_screen.dart
+  final int? tenantId;
+  final bool filtroInicialAuditoria;
 
-  const LeiturasScreenWeb({super.key, this.usuarioLogado, this.tenantId});
+  const LeiturasScreenWeb({
+    super.key, 
+    this.usuarioLogado, 
+    this.tenantId,
+    this.filtroInicialAuditoria = false,
+  });
 
   @override
   State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
@@ -36,6 +42,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   @override
   void initState() {
     super.initState();
+    
+    // Se a tela for chamada pedindo auditoria (Ex: dashboard), já liga o filtro!
+    if (widget.filtroInicialAuditoria) {
+      _statusFiltro = 'Discrepância';
+    }
+
     _carregarLeituras();
     _buscaController.addListener(_aplicarFiltros);
   }
@@ -49,14 +61,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _carregarLeituras() async {
     setState(() => _isLoading = true);
     
-    // Resolve quem é o Tenant ID (seja pelo main_web_screen ou usuario logado)
     int tId = widget.tenantId ?? 1;
     if (widget.usuarioLogado != null && widget.usuarioLogado!['tenant_id'] != null) {
       tId = int.tryParse(widget.usuarioLogado!['tenant_id'].toString()) ?? tId;
     }
 
     try {
-      // CORREÇÃO: Chama a rota padrão (Se o seu método chamar listarLeituras, só trocar aqui)
       final dados = await _apiService.getLeituras(tId);
 
       if (mounted) {
@@ -249,7 +259,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           ElevatedButton(
             onPressed: () async {
               try {
-                // Aqui entraria a chamada da sua API para salvar a edição
+                // Aqui chamará a API no futuro
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura atualizada!'), backgroundColor: Colors.green));
                 Navigator.pop(context);
                 _carregarLeituras(); 
@@ -276,7 +286,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           ElevatedButton(
             onPressed: () async {
               try {
-                // Aqui entraria a chamada da sua API para deletar
+                // Aqui chamará a API no futuro
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura excluída!'), backgroundColor: Colors.green));
                 Navigator.pop(context);
                 _carregarLeituras();
