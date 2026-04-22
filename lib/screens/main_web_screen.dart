@@ -256,10 +256,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
       DashboardScreenWeb(
         key: ValueKey('dash_$tenantIdAtivo'), 
         usuarioLogado: _usuarioLogado,
+        condominioAtivo: _condominioSelecionado, // Passa o condomínio ativo para o Dashboard
         onAuditarClique: () {
           setState(() {
-            _selectedIndex = 3; 
-            _ativarFiltroAuditoria = true; 
+            _selectedIndex = 3; // Redireciona para a aba Leituras
+            _ativarFiltroAuditoria = true; // Ativa o filtro de discrepâncias
           });
         },
       ),
@@ -284,6 +285,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
+          // AQUI FICA O BOTÃO DE TROCAR CONDOMÍNIO
           if (isMaster || _meusCondominios.length > 1)
             IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
           
