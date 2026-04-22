@@ -37,7 +37,7 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     if (widget.condominioAtivo == null && widget.usuarioLogado == null) return;
     
     setState(() => _isLoading = true);
-    int tenantId = widget.condominioAtivo?['id'] ?? widget.usuarioLogado?['tenant_id'] ?? 1;
+    int tenantId = widget.condominioAtivo?['id'] ?? widget.usuarioLogado?['tenant_id'] ?? 8;
 
     try {
       final response = await http.get(Uri.parse('https://condologic-backend.onrender.com/api/dashboard/resumo?tenant_id=$tenantId'));
@@ -59,11 +59,11 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     int totalLidos = _resumo['total_lidos'] ?? 0;
     int erros = _resumo['alertas_pendentes'] ?? 0;
 
-    // A MÁGICA DO NOME AQUI: Se não vier no condominioAtivo, ele caça no login
+    // A MÁGICA DO NOME: Tenta pegar do objeto ativo, depois do login, e se tudo falhar, assume o padrão do seu síndico.
     String nomeCondominio = widget.condominioAtivo?['nome'] 
         ?? widget.usuarioLogado?['tenant_nome'] 
         ?? widget.usuarioLogado?['nome_condominio']
-        ?? "LIFE PARK COLORS TESTE"; // Fallback visual de segurança
+        ?? "LIFE PARK COLORS TESTE"; 
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(40.0),
