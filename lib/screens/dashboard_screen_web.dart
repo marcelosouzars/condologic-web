@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
-import '../services/api_service_web.dart'; // IMPORTANTE: Adicionado para usar a mesma inteligência da tela de Leituras
+import 'package:intl/intl.dart'; // IMPORTANTE: Para formatar a data igual a tela de Leituras
+import '../services/api_service_web.dart'; 
 
 class DashboardScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
@@ -18,7 +19,7 @@ class DashboardScreenWeb extends StatefulWidget {
 
 class _DashboardScreenWebState extends State<DashboardScreenWeb> {
   Map<String, dynamic> _resumo = {};
-  int _qtdAlertasReais = 0; // Nova variável para guardar a contagem blindada
+  int _qtdAlertasReais = 0; // Guardará a contagem real e blindada
   bool _isLoading = true;
   final ApiServiceWeb _apiService = ApiServiceWeb();
 
@@ -44,30 +45,38 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     int tenantId = widget.condominioAtivo?['id'] ?? widget.usuarioLogado?['tenant_id'] ?? 1;
 
     try {
-      // 1. Busca os números gerais do dashboard (Unidades, Total Lidos)
+      // 1. Puxa o resumo do backend (para pegar o Total de Unidades e Lidos)
       final response = await http.get(Uri.parse('https://condologic-backend.onrender.com/api/dashboard/resumo?tenant_id=$tenantId'));
       if (response.statusCode == 200) {
         _resumo = jsonDecode(response.body);
       }
 
       // ==============================================================================
-      // 2. A MÁGICA: Burlar o resumo furado do backend e contar os alertas na mão!
+      // 2. A MÁGICA: Buscar as leituras do mês e contar na mão igual a tela de Leituras!
       // ==============================================================================
       try {
-        final alertasBrutos = await _apiService.getLeiturasAuditoria(tenantId);
-        int contagemAlertas = 0;
+        DateTime now = DateTime.now();
+        String dtInicioStr = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month, 1));
+        String dtFimStr = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month + 1, 0));
+
+        // Puxa exatamente a mesma lista que alimenta a tela de Leituras
+        final leiturasDoMes = await _apiService.getLeituras(tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr);
         
-        for (var leitura in alertasBrutos) {
+        int contagemAlertas = 0;
+        for (var leitura in leiturasDoMes) {
           String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
-          // Se tiver "ALERTA" ou "DISCREP", a gente contabiliza como erro pendente
+          // Conta qualquer coisa que tenha ALERTA ou DISCREP no nome
           if (status.contains('ALERTA') || status.contains('DISCREP')) {
             contagemAlertas++;
           }
         }
+        
+        // Atribui o valor real e exato
         _qtdAlertasReais = contagemAlertas;
+
       } catch (e) {
-        print("Erro ao buscar auditoria real: $e");
-        // Se a rota falhar, usa o fallback do backend
+        print("Erro ao buscar leituras do mes no dash: $e");
+        // Fallback de segurança se der erro de conexão
         _qtdAlertasReais = _resumo['alertas_pendentes'] ?? 0;
       }
 
@@ -85,7 +94,7 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     int totalUnidades = _resumo['total_unidades'] ?? 0;
     int totalLidos = _resumo['total_lidos'] ?? 0;
     
-    // Agora usamos a nossa variável blindada em vez de confiar cegamente no backend
+    // Agora o dashboard obedece a inteligência que criamos no app e ignora o furo do backend
     int erros = _qtdAlertasReais;
 
     String nomeCondominio = widget.condominioAtivo?['nome'] 
@@ -123,7 +132,7 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
 
           const SizedBox(height: 40),
 
-          // Se _qtdAlertasReais for maior que 0, explode o card vermelho na tela!
+          // SE HOUVER ALERTAS REAIS, MOSTRA A SIRENE VERMELHA
           if (erros > 0)
             Container(
               padding: const EdgeInsets.all(30),
