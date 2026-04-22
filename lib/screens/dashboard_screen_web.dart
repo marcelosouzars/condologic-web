@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
+import '../services/api_service_web.dart'; // IMPORTANTE: Adicionado para usar a mesma inteligência da tela de Leituras
 
 class DashboardScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
@@ -17,7 +18,9 @@ class DashboardScreenWeb extends StatefulWidget {
 
 class _DashboardScreenWebState extends State<DashboardScreenWeb> {
   Map<String, dynamic> _resumo = {};
+  int _qtdAlertasReais = 0; // Nova variável para guardar a contagem blindada
   bool _isLoading = true;
+  final ApiServiceWeb _apiService = ApiServiceWeb();
 
   @override
   void initState() {
@@ -38,18 +41,40 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     
     setState(() => _isLoading = true);
     
-    // DINÂMICO: Pega estritamente o ID do condomínio selecionado ou o ID real do usuário logado.
     int tenantId = widget.condominioAtivo?['id'] ?? widget.usuarioLogado?['tenant_id'] ?? 1;
 
     try {
+      // 1. Busca os números gerais do dashboard (Unidades, Total Lidos)
       final response = await http.get(Uri.parse('https://condologic-backend.onrender.com/api/dashboard/resumo?tenant_id=$tenantId'));
       if (response.statusCode == 200) {
-        setState(() => _resumo = jsonDecode(response.body));
+        _resumo = jsonDecode(response.body);
       }
+
+      // ==============================================================================
+      // 2. A MÁGICA: Burlar o resumo furado do backend e contar os alertas na mão!
+      // ==============================================================================
+      try {
+        final alertasBrutos = await _apiService.getLeiturasAuditoria(tenantId);
+        int contagemAlertas = 0;
+        
+        for (var leitura in alertasBrutos) {
+          String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
+          // Se tiver "ALERTA" ou "DISCREP", a gente contabiliza como erro pendente
+          if (status.contains('ALERTA') || status.contains('DISCREP')) {
+            contagemAlertas++;
+          }
+        }
+        _qtdAlertasReais = contagemAlertas;
+      } catch (e) {
+        print("Erro ao buscar auditoria real: $e");
+        // Se a rota falhar, usa o fallback do backend
+        _qtdAlertasReais = _resumo['alertas_pendentes'] ?? 0;
+      }
+
     } catch (e) {
       print("Erro dash: $e");
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -59,9 +84,10 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
 
     int totalUnidades = _resumo['total_unidades'] ?? 0;
     int totalLidos = _resumo['total_lidos'] ?? 0;
-    int erros = _resumo['alertas_pendentes'] ?? 0;
+    
+    // Agora usamos a nossa variável blindada em vez de confiar cegamente no backend
+    int erros = _qtdAlertasReais;
 
-    // DINÂMICO: Tenta pegar o nome real da sessão ou da lista. Se falhar, usa um nome genérico seguro.
     String nomeCondominio = widget.condominioAtivo?['nome'] 
         ?? widget.usuarioLogado?['tenant_nome'] 
         ?? widget.usuarioLogado?['nome_condominio']
@@ -97,6 +123,7 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
 
           const SizedBox(height: 40),
 
+          // Se _qtdAlertasReais for maior que 0, explode o card vermelho na tela!
           if (erros > 0)
             Container(
               padding: const EdgeInsets.all(30),
