@@ -77,13 +77,29 @@ class _MainWebScreenState extends State<MainWebScreen> {
                   _condominioSelecionado = _meusCondominios[0];
                 }
               }
+            } else {
+              // ==============================================================
+              // TRAVA DE SEGURANÇA: Se a API não retornou os condomínios (ex: Síndico isolado), 
+              // nós criamos o objeto condominioSelecionado manualmente!
+              // ==============================================================
+              int? fallbackId = _usuarioLogado?['tenant_id'] ?? 1;
+              String fallbackNome = _usuarioLogado?['tenant_nome'] ?? _usuarioLogado?['nome_condominio'] ?? "LIFE PARK COLORS TESTE";
               
-              if (_condominioSelecionado != null) {
-                _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
-                _usuarioLogado!['tenant_id_sessao'] = _condominioSelecionado!['id'];
-                api.salvarSessao(_usuarioLogado!);
-              }
+              _condominioSelecionado = {
+                'id': fallbackId,
+                'nome': fallbackNome,
+              };
+              // Forçamos ele a entrar na lista para habilitar o sistema
+              _meusCondominios = [_condominioSelecionado]; 
             }
+
+            // Atualiza sessão
+            if (_condominioSelecionado != null) {
+              _usuarioLogado!['tenant_id'] = _condominioSelecionado!['id'];
+              _usuarioLogado!['tenant_id_sessao'] = _condominioSelecionado!['id'];
+              api.salvarSessao(_usuarioLogado!);
+            }
+            
             _loading = false;
           });
         }
@@ -207,7 +223,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
               
               return ListTile(
                 leading: Icon(Icons.apartment, color: isAtivo ? Colors.blue[900] : Colors.grey),
-                title: Text(cond['nome'], style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.blue[900] : Colors.black)),
+                title: Text(cond['nome'] ?? 'Condomínio', style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.blue[900] : Colors.black)),
                 subtitle: Text("CNPJ: ${cond['cnpj'] ?? 'N/A'}"),
                 trailing: isAtivo ? const Icon(Icons.check_circle, color: Colors.green) : null,
                 tileColor: isAtivo ? Colors.blue[50] : null,
@@ -256,11 +272,11 @@ class _MainWebScreenState extends State<MainWebScreen> {
       DashboardScreenWeb(
         key: ValueKey('dash_$tenantIdAtivo'), 
         usuarioLogado: _usuarioLogado,
-        condominioAtivo: _condominioSelecionado, // Passa o condomínio ativo para o Dashboard
+        condominioAtivo: _condominioSelecionado, 
         onAuditarClique: () {
           setState(() {
-            _selectedIndex = 3; // Redireciona para a aba Leituras
-            _ativarFiltroAuditoria = true; // Ativa o filtro de discrepâncias
+            _selectedIndex = 3; 
+            _ativarFiltroAuditoria = true; 
           });
         },
       ),
@@ -285,7 +301,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
-          // AQUI FICA O BOTÃO DE TROCAR CONDOMÍNIO
           if (isMaster || _meusCondominios.length > 1)
             IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
           

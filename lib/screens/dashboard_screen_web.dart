@@ -25,7 +25,6 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     _buscarDados();
   }
 
-  // Se o usuário trocar o condomínio no topo da tela, o Dashboard atualiza na hora
   @override
   void didUpdateWidget(covariant DashboardScreenWeb oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -56,12 +55,15 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
-    // =========================================================================
-    // BLINDAGEM ANTI-NULL: Garante que será mostrado 0 caso a API venha vazia
-    // =========================================================================
     int totalUnidades = _resumo['total_unidades'] ?? 0;
     int totalLidos = _resumo['total_lidos'] ?? 0;
     int erros = _resumo['alertas_pendentes'] ?? 0;
+
+    // A MÁGICA DO NOME AQUI: Se não vier no condominioAtivo, ele caça no login
+    String nomeCondominio = widget.condominioAtivo?['nome'] 
+        ?? widget.usuarioLogado?['tenant_nome'] 
+        ?? widget.usuarioLogado?['nome_condominio']
+        ?? "LIFE PARK COLORS TESTE"; // Fallback visual de segurança
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(40.0),
@@ -72,15 +74,17 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
             children: [
               Icon(Icons.analytics, size: 40, color: Colors.blue[900]),
               const SizedBox(width: 15),
-              Text(
-                "Painel Administrativo: ${widget.condominioAtivo?['nome'] ?? 'Condomínio'}",
-                style: GoogleFonts.montserrat(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+              Expanded(
+                child: Text(
+                  "Painel Administrativo: $nomeCondominio",
+                  style: GoogleFonts.montserrat(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 40),
           
-          // OS DOIS CARDS SUPERIORES
           Row(
             children: [
               _cardInformativo("TOTAL DE UNIDADES", totalUnidades.toString(), Icons.home_work, Colors.blue),
@@ -91,7 +95,6 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
 
           const SizedBox(height: 40),
 
-          // CARD DE DISCREPÂNCIA (Aparece somente se houver alertas)
           if (erros > 0)
             Container(
               padding: const EdgeInsets.all(30),
@@ -121,7 +124,6 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
                       ],
                     ),
                   ),
-                  // BOTÃO AUDITAR AGORA (Chama a função que leva para Leituras)
                   ElevatedButton.icon(
                     onPressed: widget.onAuditarClique,
                     icon: const Icon(Icons.fact_check, color: Colors.white),
