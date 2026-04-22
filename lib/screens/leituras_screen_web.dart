@@ -3,11 +3,13 @@ import '../services/api_service_web.dart';
 import 'package:intl/intl.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border; // CORREÇÃO: Esconde o Border do Excel para evitar conflito
 
 class LeiturasScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
-  const LeiturasScreenWeb({super.key, required this.usuarioLogado});
+  final int? tenantId; // CORREÇÃO: Aceita o tenantId vindo do main_web_screen.dart
+
+  const LeiturasScreenWeb({super.key, this.usuarioLogado, this.tenantId});
 
   @override
   State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
@@ -46,17 +48,16 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
   Future<void> _carregarLeituras() async {
     setState(() => _isLoading = true);
-    if (widget.usuarioLogado == null) return;
-
-    int tenantId = widget.usuarioLogado!['tenant_id'] ?? 1;
+    
+    // Resolve quem é o Tenant ID (seja pelo main_web_screen ou usuario logado)
+    int tId = widget.tenantId ?? 1;
+    if (widget.usuarioLogado != null && widget.usuarioLogado!['tenant_id'] != null) {
+      tId = int.tryParse(widget.usuarioLogado!['tenant_id'].toString()) ?? tId;
+    }
 
     try {
-      // Busca leituras retroativas de 3 meses para garantir dados nos filtros
-      DateTime hoje = DateTime.now();
-      String inicio = DateFormat('yyyy-MM-dd').format(DateTime(hoje.year, hoje.month - 3, 1));
-      String fim = DateFormat('yyyy-MM-dd').format(DateTime(hoje.year, hoje.month + 2, 0));
-      
-      final dados = await _apiService.getLeiturasPorPeriodo(tenantId, inicio, fim);
+      // CORREÇÃO: Chama a rota padrão (Se o seu método chamar listarLeituras, só trocar aqui)
+      final dados = await _apiService.getLeituras(tId);
 
       if (mounted) {
         setState(() {
@@ -77,12 +78,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
   void _aplicarFiltros() {
     List<dynamic> filtrado = _leiturasOriginais.where((l) {
-      bool passaMes = l['mes_referencia'] == _mesSelecionado;
-      bool passaBloco = _blocoFiltro == 'Todos' || l['bloco_nome'] == _blocoFiltro;
+      bool passaMes = l['mes_referencia']?.toString() == _mesSelecionado;
+      bool passaBloco = _blocoFiltro == 'Todos' || l['bloco_nome']?.toString() == _blocoFiltro;
       
       bool passaStatus = true;
-      if (_statusFiltro == 'Discrepância') passaStatus = l['status_leitura'] == 'ALERTA_DISCREPANCIA';
-      if (_statusFiltro == 'Normal') passaStatus = l['status_leitura'] == 'NORMAL' || l['status_leitura'] == 'LIDO';
+      if (_statusFiltro == 'Discrepância') passaStatus = l['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA';
+      if (_statusFiltro == 'Normal') passaStatus = l['status_leitura']?.toString() == 'NORMAL' || l['status_leitura']?.toString() == 'LIDO';
 
       bool passaBusca = true;
       if (_buscaController.text.isNotEmpty) {
@@ -94,13 +95,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       return passaMes && passaBloco && passaStatus && passaBusca;
     }).toList();
 
-    // Ordenação: Discrepâncias primeiro, depois por bloco e unidade
     filtrado.sort((a, b) {
-      if (a['status_leitura'] == 'ALERTA_DISCREPANCIA' && b['status_leitura'] != 'ALERTA_DISCREPANCIA') return -1;
-      if (b['status_leitura'] == 'ALERTA_DISCREPANCIA' && a['status_leitura'] != 'ALERTA_DISCREPANCIA') return 1;
-      int blocoCmp = (a['bloco_nome'] ?? '').compareTo(b['bloco_nome'] ?? '');
+      if (a['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' && b['status_leitura']?.toString() != 'ALERTA_DISCREPANCIA') return -1;
+      if (b['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' && a['status_leitura']?.toString() != 'ALERTA_DISCREPANCIA') return 1;
+      int blocoCmp = (a['bloco_nome']?.toString() ?? '').compareTo(b['bloco_nome']?.toString() ?? '');
       if (blocoCmp != 0) return blocoCmp;
-      return (a['unidade_nome'] ?? '').compareTo(b['unidade_nome'] ?? '');
+      return (a['unidade_nome']?.toString() ?? '').compareTo(b['unidade_nome']?.toString() ?? '');
     });
 
     _calcularEstatisticas(filtrado);
@@ -117,7 +117,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
     for (var item in dados) {
       _consumoTotal += (item['consumo'] != null ? double.tryParse(item['consumo'].toString()) ?? 0 : 0);
-      if (item['status_leitura'] == 'ALERTA_DISCREPANCIA') {
+      if (item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA') {
         _totalDiscrepancias++;
       }
     }
@@ -129,7 +129,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     var excel = Excel.createExcel();
     var sheet = excel['Leituras'];
     
-    // Cabeçalhos
     sheet.appendRow([
       TextCellValue('Unidade'),
       TextCellValue('Bloco'),
@@ -141,13 +140,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
       TextCellValue('Status'),
     ]);
 
-    // Dados
     for (var l in _leiturasFiltradas) {
       sheet.appendRow([
         TextCellValue(l['unidade_nome']?.toString() ?? '-'),
         TextCellValue(l['bloco_nome']?.toString() ?? '-'),
         TextCellValue(l['mes_referencia']?.toString() ?? '-'),
-        TextCellValue(l['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(l['data_leitura'])) : '-'),
+        TextCellValue(l['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(l['data_leitura'].toString())) : '-'),
         TextCellValue(l['leitura_anterior']?.toString() ?? '0'),
         TextCellValue(l['valor_lido']?.toString() ?? '0'),
         TextCellValue(l['consumo']?.toString() ?? '0'),
@@ -200,7 +198,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
-  void _mostrarModalEdicao(Map<String, dynamic> leitura) {
+  void _mostrarModalEdicao(dynamic leitura) {
     final valorLidoCtrl = TextEditingController(text: leitura['valor_lido']?.toString() ?? '');
     final leituraAnteriorCtrl = TextEditingController(text: leitura['leitura_anterior']?.toString() ?? '0');
     final obsCtrl = TextEditingController(text: leitura['observacao']?.toString() ?? '');
@@ -208,7 +206,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Editar Leitura - ${leitura['unidade_nome']}"),
+        title: Text("Editar Leitura - ${leitura['unidade_nome'] ?? ''}"),
         content: SizedBox(
           width: 400,
           child: Column(
@@ -251,12 +249,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           ElevatedButton(
             onPressed: () async {
               try {
-                // Aqui você chamará o serviço de atualização (ApiServiceWeb)
-                // Ex: await _apiService.atualizarLeitura(leitura['id'], novoValor, novaObs);
-                
+                // Aqui entraria a chamada da sua API para salvar a edição
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura atualizada!'), backgroundColor: Colors.green));
                 Navigator.pop(context);
-                _carregarLeituras(); // Recarrega os dados
+                _carregarLeituras(); 
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
               }
@@ -269,7 +265,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
-  void _confirmarExclusao(int idLeitura) {
+  void _confirmarExclusao(dynamic idLeitura) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -280,7 +276,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           ElevatedButton(
             onPressed: () async {
               try {
-                // Ex: await _apiService.excluirLeitura(idLeitura);
+                // Aqui entraria a chamada da sua API para deletar
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura excluída!'), backgroundColor: Colors.green));
                 Navigator.pop(context);
                 _carregarLeituras();
@@ -330,7 +326,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
-  // --- COMPONENTES DA NOVA TABELA CUSTOMIZADA ---
   Widget _buildHeaderCell(String texto, double largura) {
     return Container(
       width: largura,
@@ -358,9 +353,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    // Extrai lista única de blocos para o filtro
     List<String> blocosDisponiveis = ['Todos'];
-    blocosDisponiveis.addAll(_leiturasOriginais.map((l) => l['bloco_nome'].toString()).toSet().toList());
+    blocosDisponiveis.addAll(_leiturasOriginais.map((l) => l['bloco_nome']?.toString() ?? '').where((b) => b.isNotEmpty).toSet().toList());
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F9),
@@ -369,7 +363,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // CABEÇALHO DA PÁGINA
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -394,7 +387,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             ),
             const SizedBox(height: 25),
 
-            // CARDS DE ESTATÍSTICAS
             Row(
               children: [
                 _buildSummaryCard("Leituras Realizadas", "$_totalLeituras", Icons.speed, Colors.blue),
@@ -406,7 +398,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             ),
             const SizedBox(height: 25),
 
-            // FILTROS
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey[300]!)),
@@ -473,7 +464,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             ),
             const SizedBox(height: 20),
 
-            // A NOVA TABELA CUSTOMIZADA COM SCROLL HORIZONTAL
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -489,10 +479,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                         : SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: SizedBox(
-                              width: 1250, // LARGURA FIXA MAIOR PARA GARANTIR ESPAÇO PARA O BOTÃO EDITAR
+                              width: 1250, 
                               child: Column(
                                 children: [
-                                  // CABEÇALHO DA TABELA
                                   Container(
                                     decoration: BoxDecoration(
                                       color: Colors.grey[100],
@@ -508,12 +497,11 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                         _buildHeaderCell("Consumo", 110),
                                         _buildHeaderCell("Status", 160),
                                         _buildHeaderCell("Foto", 80),
-                                        _buildHeaderCell("Ações", 220), // Coluna GIGANTE para garantir os botões
+                                        _buildHeaderCell("Ações", 220), 
                                       ],
                                     ),
                                   ),
                                   const Divider(height: 1, thickness: 1),
-                                  // CORPO DA TABELA
                                   Expanded(
                                     child: ListView.separated(
                                       itemCount: _leiturasFiltradas.length,
@@ -522,21 +510,20 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                         final item = _leiturasFiltradas[index];
                                         
                                         Color statusColor = Colors.green;
-                                        if (item['status_leitura'] == 'ALERTA_DISCREPANCIA') statusColor = Colors.red;
-                                        if (item['status_leitura'] == 'PENDENTE') statusColor = Colors.orange;
+                                        if (item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA') statusColor = Colors.red;
+                                        if (item['status_leitura']?.toString() == 'PENDENTE') statusColor = Colors.orange;
 
                                         return Container(
-                                          color: item['status_leitura'] == 'ALERTA_DISCREPANCIA' ? Colors.red.withOpacity(0.03) : Colors.transparent,
+                                          color: item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' ? Colors.red.withOpacity(0.03) : Colors.transparent,
                                           child: Row(
                                             children: [
-                                              _buildDataCell(item['unidade_nome'] ?? "-", 120, pesoTexto: FontWeight.bold),
-                                              _buildDataCell(item['bloco_nome'] ?? "-", 120),
-                                              _buildDataCell(item['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(item['data_leitura'])) : "-", 150),
+                                              _buildDataCell(item['unidade_nome']?.toString() ?? "-", 120, pesoTexto: FontWeight.bold),
+                                              _buildDataCell(item['bloco_nome']?.toString() ?? "-", 120),
+                                              _buildDataCell(item['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(item['data_leitura'].toString())) : "-", 150),
                                               _buildDataCell("${item['leitura_anterior'] ?? '0'}", 100),
                                               _buildDataCell("${item['valor_lido'] ?? '0'}", 100, pesoTexto: FontWeight.bold),
                                               _buildDataCell("${item['consumo'] ?? '0'} m³", 110, corTexto: const Color(0xFF003366), pesoTexto: FontWeight.bold),
                                               
-                                              // Status com Badges
                                               Container(
                                                 width: 160,
                                                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -549,13 +536,12 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                                     border: Border.all(color: statusColor.withOpacity(0.5))
                                                   ),
                                                   child: Text(
-                                                    item['status_leitura'] ?? "OK",
+                                                    item['status_leitura']?.toString() ?? "OK",
                                                     style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold),
                                                   ),
                                                 ),
                                               ),
 
-                                              // Coluna Foto
                                               Container(
                                                 width: 80,
                                                 alignment: Alignment.center,
@@ -563,12 +549,11 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                                     ? IconButton(
                                                         icon: const Icon(Icons.image, color: Colors.blue),
                                                         tooltip: "Ver Foto",
-                                                        onPressed: () => _mostrarFoto(item['foto_url']),
+                                                        onPressed: () => _mostrarFoto(item['foto_url'].toString()),
                                                       )
                                                     : const Icon(Icons.image_not_supported, color: Colors.grey, size: 20),
                                               ),
 
-                                              // COLUNA DE AÇÕES - COM BOTÕES DE EDITAR E EXCLUIR CLARAMENTE VISÍVEIS
                                               Container(
                                                 width: 220,
                                                 padding: const EdgeInsets.symmetric(horizontal: 10),
