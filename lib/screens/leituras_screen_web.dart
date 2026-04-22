@@ -1,21 +1,15 @@
+// ==========================================>>> leituras_screen_web.dart
+
 import 'package:flutter/material.dart';
-import '../services/api_service_web.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-import 'package:excel/excel.dart' hide Border;
+import '../services/api_service_web.dart';
 
 class LeiturasScreenWeb extends StatefulWidget {
-  final Map<String, dynamic>? usuarioLogado;
-  final int? tenantId;
+  final int tenantId;
   final bool filtroInicialAuditoria;
 
-  const LeiturasScreenWeb({
-    super.key, 
-    this.usuarioLogado, 
-    this.tenantId,
-    this.filtroInicialAuditoria = false,
-  });
+  const LeiturasScreenWeb({super.key, required this.tenantId, this.filtroInicialAuditoria = false});
 
   @override
   State<LeiturasScreenWeb> createState() => _LeiturasScreenWebState();
@@ -24,585 +18,599 @@ class LeiturasScreenWeb extends StatefulWidget {
 class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   
-  List<dynamic> _leiturasOriginais = [];
+  List<dynamic> _leiturasBrutas = [];
   List<dynamic> _leiturasFiltradas = [];
+  List<dynamic> _blocos = [];
+  List<String> _andares = [];
+  List<dynamic> _unidades = [];
+
+  Map<String, dynamic>? _selectedBloco;
+  String? _selectedAndar;
+  Map<String, dynamic>? _selectedUnidade;
+  late DateTimeRange _dataSelecionada;
   bool _isLoading = true;
-
-  // Filtros
-  String _mesSelecionado = DateFormat('MM/yyyy').format(DateTime.now());
-  String _blocoFiltro = 'Todos';
-  String _statusFiltro = 'Todos';
-  final TextEditingController _buscaController = TextEditingController();
-
-  // Estatísticas
-  int _totalLeituras = 0;
-  double _consumoTotal = 0;
-  int _totalDiscrepancias = 0;
+  bool _mostrarApenasAlertas = false;
 
   @override
   void initState() {
     super.initState();
-    
-    // Se a tela for chamada pedindo auditoria (Ex: dashboard), já liga o filtro!
-    if (widget.filtroInicialAuditoria) {
-      _statusFiltro = 'Discrepância';
-    }
+    _mostrarApenasAlertas = widget.filtroInicialAuditoria;
 
-    _carregarLeituras();
-    _buscaController.addListener(_aplicarFiltros);
+    DateTime now = DateTime.now();
+    if (_mostrarApenasAlertas) {
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(2000, 1, 1), 
+        end: DateTime(now.year + 1, 12, 31),
+      );
+    } else {
+      _dataSelecionada = DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: DateTime(now.year, now.month + 1, 0),
+      );
+    }
+    
+    _inicializarTela();
   }
 
-  @override
-  void dispose() {
-    _buscaController.dispose();
-    super.dispose();
+  Future<void> _inicializarTela() async {
+    await _carregarBlocos();
+    await _buscarDados();
   }
 
-  Future<void> _carregarLeituras() async {
-    setState(() => _isLoading = true);
-    
-    int tId = widget.tenantId ?? 1;
-    if (widget.usuarioLogado != null && widget.usuarioLogado!['tenant_id'] != null) {
-      tId = int.tryParse(widget.usuarioLogado!['tenant_id'].toString()) ?? tId;
-    }
+  String _formatarMedicao(dynamic valor) {
+    if (valor == null) return '0,000';
+    double v = double.tryParse(valor.toString()) ?? 0.0;
+    return v.toStringAsFixed(3).replaceAll('.', ',');
+  }
 
+  Widget _buildLabelAndField(String label, Widget field) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+        const SizedBox(height: 8),
+        field,
+      ],
+    );
+  }
+
+  Future<void> _carregarBlocos() async {
     try {
-      final dados = await _apiService.getLeituras(tId);
-
+      final dados = await _apiService.getBlocos(widget.tenantId);
       if (mounted) {
         setState(() {
-          _leiturasOriginais = dados;
-          _aplicarFiltros();
+          _blocos = dados;
+          _selectedBloco = null;
+          _selectedAndar = null;
+          _selectedUnidade = null;
+          _andares = [];
+          _unidades = [];
+        });
+      }
+    } catch (e) {
+      print("Erro ao carregar blocos: $e");
+    }
+  }
+
+  Future<void> _carregarUnidadesEAndares(int blocoId) async {
+    try {
+      final dados = await _apiService.getUnidadesPorBloco(blocoId);
+      if (mounted) {
+        setState(() {
+          _unidades = dados;
+          final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
+          andaresUnicos.sort((a, b) {
+            if (a.toLowerCase() == 'térreo') return -1;
+            if (b.toLowerCase() == 'térreo') return 1;
+            final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
+            final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
+            if (numA != null && numB != null) return numA.compareTo(numB);
+            return a.compareTo(b); 
+          });
+          _andares = andaresUnicos;
+          _selectedAndar = null;
+          _selectedUnidade = null;
+        });
+      }
+    } catch (e) {
+      print("Erro ao carregar unidades: $e");
+    }
+  }
+
+  Future<void> _buscarDados() async {
+    setState(() => _isLoading = true);
+    try {
+      List<dynamic> dados = [];
+      if (_mostrarApenasAlertas) {
+        dados = await _apiService.getLeiturasAuditoria(widget.tenantId);
+      } else {
+        final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
+        final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
+        dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+        if (dados.isEmpty && _selectedBloco != null) {
+          dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _leiturasBrutas = dados;
+          _aplicarFiltrosLocais();
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if(mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao carregar leituras: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar dados: $e'), backgroundColor: Colors.red));
       }
     }
   }
 
-  void _aplicarFiltros() {
-    List<dynamic> filtrado = _leiturasOriginais.where((l) {
-      bool passaMes = l['mes_referencia']?.toString() == _mesSelecionado;
-      bool passaBloco = _blocoFiltro == 'Todos' || l['bloco_nome']?.toString() == _blocoFiltro;
-      
-      bool passaStatus = true;
-      if (_statusFiltro == 'Discrepância') passaStatus = l['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA';
-      if (_statusFiltro == 'Normal') passaStatus = l['status_leitura']?.toString() == 'NORMAL' || l['status_leitura']?.toString() == 'LIDO';
-
-      bool passaBusca = true;
-      if (_buscaController.text.isNotEmpty) {
-        String busca = _buscaController.text.toLowerCase();
-        String unidade = (l['unidade_nome'] ?? '').toString().toLowerCase();
-        passaBusca = unidade.contains(busca);
-      }
-
-      return passaMes && passaBloco && passaStatus && passaBusca;
-    }).toList();
-
-    filtrado.sort((a, b) {
-      if (a['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' && b['status_leitura']?.toString() != 'ALERTA_DISCREPANCIA') return -1;
-      if (b['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' && a['status_leitura']?.toString() != 'ALERTA_DISCREPANCIA') return 1;
-      int blocoCmp = (a['bloco_nome']?.toString() ?? '').compareTo(b['bloco_nome']?.toString() ?? '');
-      if (blocoCmp != 0) return blocoCmp;
-      return (a['unidade_nome']?.toString() ?? '').compareTo(b['unidade_nome']?.toString() ?? '');
-    });
-
-    _calcularEstatisticas(filtrado);
-
+  void _aplicarFiltrosLocais() {
     setState(() {
-      _leiturasFiltradas = filtrado;
+      _leiturasFiltradas = _leiturasBrutas.where((leitura) {
+        bool passaData = true;
+        
+        if (!_mostrarApenasAlertas) {
+          try {
+            String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
+            if (dataStr.isNotEmpty && dataStr != '-') {
+              DateTime? dtLeitura;
+              if (dataStr.contains('/')) {
+                final p = dataStr.split(' ')[0].split('/');
+                if (p.length == 3) dtLeitura = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+              } else if (dataStr.contains('-')) {
+                dtLeitura = DateTime.tryParse(dataStr);
+              }
+              if (dtLeitura != null) {
+                DateTime start = DateTime(_dataSelecionada.start.year, _dataSelecionada.start.month, _dataSelecionada.start.day);
+                DateTime end = DateTime(_dataSelecionada.end.year, _dataSelecionada.end.month, _dataSelecionada.end.day, 23, 59, 59);
+                passaData = dtLeitura.isAfter(start.subtract(const Duration(days: 1))) && dtLeitura.isBefore(end);
+              }
+            }
+          } catch (_) {} 
+        }
+
+        bool passaBloco = true;
+        if (_selectedBloco != null) {
+          String blocoLeitura = (leitura['bloco'] ?? leitura['bloco_nome'] ?? '').toString().trim().toLowerCase();
+          passaBloco = blocoLeitura == _selectedBloco!['nome'].toString().trim().toLowerCase();
+        }
+        
+        bool passaAndar = true;
+        String unidLeitura = (leitura['unidade'] ?? leitura['identificacao'] ?? '').toString().trim().toLowerCase();
+        if (_selectedAndar != null && _selectedUnidade == null) {
+          List<String> unidsDoAndar = _unidades.where((u) => (u['andar']?.toString().trim().toLowerCase() ?? 'térreo') == _selectedAndar!.trim().toLowerCase()).map((u) => (u['identificacao'] ?? '').toString().trim().toLowerCase()).toList();
+          passaAndar = unidsDoAndar.contains(unidLeitura);
+        }
+
+        bool passaUnidade = true;
+        if (_selectedUnidade != null) passaUnidade = unidLeitura == _selectedUnidade!['identificacao'].toString().trim().toLowerCase();
+
+        bool passaStatus = true;
+        if (_mostrarApenasAlertas) {
+          String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
+          passaStatus = status.contains('ALERTA') || status.contains('DISCREP');
+        }
+
+        return passaData && passaBloco && passaAndar && passaUnidade && passaStatus;
+      }).toList();
     });
   }
 
-  void _calcularEstatisticas(List<dynamic> dados) {
-    _totalLeituras = dados.length;
-    _consumoTotal = 0;
-    _totalDiscrepancias = 0;
-
-    for (var item in dados) {
-      _consumoTotal += (item['consumo'] != null ? double.tryParse(item['consumo'].toString()) ?? 0 : 0);
-      if (item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA') {
-        _totalDiscrepancias++;
-      }
-    }
-  }
-
-  // ====================== AÇÕES ======================
-
-  void _exportarParaExcel() {
-    var excel = Excel.createExcel();
-    var sheet = excel['Leituras'];
-    
-    sheet.appendRow([
-      TextCellValue('Unidade'),
-      TextCellValue('Bloco'),
-      TextCellValue('Mês Ref'),
-      TextCellValue('Data Leitura'),
-      TextCellValue('Leitura Anterior'),
-      TextCellValue('Leitura Atual'),
-      TextCellValue('Consumo (m³)'),
-      TextCellValue('Status'),
-    ]);
-
-    for (var l in _leiturasFiltradas) {
-      sheet.appendRow([
-        TextCellValue(l['unidade_nome']?.toString() ?? '-'),
-        TextCellValue(l['bloco_nome']?.toString() ?? '-'),
-        TextCellValue(l['mes_referencia']?.toString() ?? '-'),
-        TextCellValue(l['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(l['data_leitura'].toString())) : '-'),
-        TextCellValue(l['leitura_anterior']?.toString() ?? '0'),
-        TextCellValue(l['valor_lido']?.toString() ?? '0'),
-        TextCellValue(l['consumo']?.toString() ?? '0'),
-        TextCellValue(l['status_leitura']?.toString() ?? '-'),
-      ]);
-    }
-
-    var fileBytes = excel.save();
-    if (fileBytes != null) {
-      final blob = html.Blob([fileBytes]);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute("download", "Relatorio_Leituras_$_mesSelecionado.xlsx")
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    }
-  }
-
-  void _mostrarFoto(String url) {
-    showDialog(
+  Future<void> _selecionarPeriodo() async {
+    DateTime inicioTemp = _dataSelecionada.start;
+    DateTime fimTemp = _dataSelecionada.end;
+    await showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Container(
-          padding: const EdgeInsets.all(15),
-          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              title: Row(
                 children: [
-                  const Text("Foto do Hidrômetro", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                  Icon(Icons.date_range, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  Text("Selecionar Período", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
                 ],
               ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(url, fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const Center(child: Text("Erro ao carregar imagem.")),
-                  ),
-                ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Defina a data inicial e final para visualizar as leituras:", style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 25),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(context: context, initialDate: inicioTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            if (picked != null) setStateModal(() => inicioTemp = picked);
+                          },
+                          child: InputDecorator(decoration: const InputDecoration(labelText: "Data Inicial", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(inicioTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      const Icon(Icons.arrow_forward, color: Colors.grey),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(context: context, initialDate: fimTemp, firstDate: DateTime(2000), lastDate: DateTime.now().add(const Duration(days: 365)));
+                            if (picked != null) setStateModal(() => fimTemp = picked);
+                          },
+                          child: InputDecorator(decoration: const InputDecoration(labelText: "Data Final", border: OutlineInputBorder(), prefixIcon: Icon(Icons.event, size: 20)), child: Text(DateFormat('dd/MM/yyyy').format(fimTemp), style: const TextStyle(fontWeight: FontWeight.bold))),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
               ),
-            ],
-          ),
-        ),
-      ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCELAR", style: TextStyle(color: Colors.red))),
+                ElevatedButton(
+                  onPressed: () {
+                    if (fimTemp.isBefore(inicioTemp)) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A Data Final não pode ser anterior à Inicial."), backgroundColor: Colors.red));
+                      return;
+                    }
+                    setState(() {
+                      _dataSelecionada = DateTimeRange(start: inicioTemp, end: fimTemp);
+                    });
+                    Navigator.pop(ctx);
+                    _buscarDados();
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                  child: const Text("CONFIRMAR E BUSCAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _mostrarModalEdicao(dynamic leitura) {
-    final valorLidoCtrl = TextEditingController(text: leitura['valor_lido']?.toString() ?? '');
-    final leituraAnteriorCtrl = TextEditingController(text: leitura['leitura_anterior']?.toString() ?? '0');
-    final obsCtrl = TextEditingController(text: leitura['observacao']?.toString() ?? '');
-    
+  void _abrirModalEdicao(Map<String, dynamic> leitura) {
+    TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
+    bool isSaving = false;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Editar Leitura - ${leitura['unidade_nome'] ?? ''}"),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: leituraAnteriorCtrl,
-                decoration: const InputDecoration(labelText: 'Leitura Anterior (m³)', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Row(
+                children: [
+                  Icon(Icons.edit_note, color: Colors.blue[900]),
+                  const SizedBox(width: 10),
+                  Text("Corrigir Leitura - Apto ${leitura['unidade'] ?? leitura['identificacao'] ?? '-'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
               ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: valorLidoCtrl,
-                decoration: const InputDecoration(labelText: 'Leitura Atual (m³)', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: obsCtrl,
-                decoration: const InputDecoration(labelText: 'Observação (Ex: Ajuste manual)', border: OutlineInputBorder()),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.amber[100], borderRadius: BorderRadius.circular(8)),
-                child: const Row(
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning, color: Colors.amber),
-                    SizedBox(width: 10),
-                    Expanded(child: Text("O consumo será recalculado automaticamente ao salvar.", style: TextStyle(fontSize: 12))),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Medidor: ${(leitura['tipo_medidor'] ?? '').toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                          const SizedBox(height: 5),
+                          Text("Leitura Anterior: ${_formatarMedicao(leitura['leitura_anterior'])} m³", style: const TextStyle(color: Colors.black87)),
+                          Text("Lido pela IA: ${_formatarMedicao(leitura['valor_lido'])} m³", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: valorController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: "Novo Valor Correto (m³)", 
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.speed)
+                      ),
+                    ),
+                    if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
                   ],
                 ),
-              )
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                // Aqui chamará a API no futuro
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura atualizada!'), backgroundColor: Colors.green));
-                Navigator.pop(context);
-                _carregarLeituras(); 
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF003366), foregroundColor: Colors.white),
-            child: const Text("Salvar Alterações"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmarExclusao(dynamic idLeitura) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Excluir Leitura"),
-        content: const Text("Tem certeza que deseja excluir esta leitura? Esta ação não pode ser desfeita."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                // Aqui chamará a API no futuro
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leitura excluída!'), backgroundColor: Colors.green));
-                Navigator.pop(context);
-                _carregarLeituras();
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text("Excluir"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ====================== WIDGETS DE LAYOUT ======================
-
-  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 28),
-            ),
-            const SizedBox(width: 15),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-                const SizedBox(height: 5),
-                Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF003366))),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  icon: const Icon(Icons.check, color: Colors.white),
+                  onPressed: isSaving ? null : () async {
+                    if (valorController.text.isEmpty) return;
+                    setStateDialog(() => isSaving = true);
+                    try {
+                      double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
+                      await _apiService.corrigirLeitura(leitura['id'], novoValor);
+                      
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _buscarDados(); 
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada com sucesso!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
+                    }
+                  },
+                  label: const Text("SALVAR ALTERAÇÃO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderCell(String texto, double largura) {
-    return Container(
-      width: largura,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-      alignment: Alignment.centerLeft,
-      child: Text(
-        texto,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF003366), fontSize: 14),
-      ),
-    );
-  }
-
-  Widget _buildDataCell(String texto, double largura, {Color? corTexto, FontWeight? pesoTexto}) {
-    return Container(
-      width: largura,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      alignment: Alignment.centerLeft,
-      child: Text(
-        texto,
-        style: TextStyle(color: corTexto ?? Colors.black87, fontSize: 14, fontWeight: pesoTexto ?? FontWeight.normal),
-        overflow: TextOverflow.ellipsis,
-      ),
+            );
+          }
+        );
+      }
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    List<String> blocosDisponiveis = ['Todos'];
-    blocosDisponiveis.addAll(_leiturasOriginais.map((l) => l['bloco_nome']?.toString() ?? '').where((b) => b.isNotEmpty).toSet().toList());
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F9),
-      body: Padding(
-        padding: const EdgeInsets.all(25.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Text('Leituras Registradas', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                const SizedBox(height: 5),
+                const Text('Visualize e filtre o histórico de medições do condomínio.', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+            Row(
+              children: [
+                Row(
                   children: [
-                    Text("Gestão de Leituras", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF003366))),
-                    Text("Acompanhamento, auditoria e edição de medições", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                    Switch(
+                      value: _mostrarApenasAlertas,
+                      activeColor: Colors.red,
+                      onChanged: (val) {
+                        setState(() {
+                          _mostrarApenasAlertas = val;
+                        });
+                        _buscarDados(); 
+                      },
+                    ),
+                    const Text("Somente Discrepâncias", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: _exportarParaExcel,
-                  icon: const Icon(Icons.file_download),
-                  label: const Text("Exportar Excel"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                  ),
+                const SizedBox(width: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                  decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
+                  child: Text("Total Listado: ${_leiturasFiltradas.length}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
                 ),
               ],
-            ),
-            const SizedBox(height: 25),
+            )
+          ],
+        ),
+        
+        const SizedBox(height: 20),
 
-            Row(
+        Card(
+          elevation: 3,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSummaryCard("Leituras Realizadas", "$_totalLeituras", Icons.speed, Colors.blue),
-                const SizedBox(width: 20),
-                _buildSummaryCard("Consumo Total", "${_consumoTotal.toStringAsFixed(1)} m³", Icons.water_drop, Colors.cyan),
-                const SizedBox(width: 20),
-                _buildSummaryCard("Discrepâncias", "$_totalDiscrepancias", Icons.warning_amber_rounded, Colors.red),
-              ],
-            ),
-            const SizedBox(height: 25),
-
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey[300]!)),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: TextField(
-                      controller: _buscaController,
-                      decoration: const InputDecoration(
-                        labelText: 'Buscar Unidade...', prefixIcon: Icon(Icons.search), border: OutlineInputBorder(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _buildLabelAndField(
+                        '1. Período de Análise',
+                        InkWell(
+                          onTap: _mostrarApenasAlertas ? null : _selecionarPeriodo,
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              border: const OutlineInputBorder(), 
+                              prefixIcon: Icon(Icons.calendar_month, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87), 
+                              isDense: true
+                            ),
+                            child: Text(
+                              _mostrarApenasAlertas ? "Todo o período (Alertas Pendentes)" : "${DateFormat('dd/MM/yyyy').format(_dataSelecionada.start)} até ${DateFormat('dd/MM/yyyy').format(_dataSelecionada.end)}", 
+                              style: TextStyle(fontSize: 15, color: _mostrarApenasAlertas ? Colors.grey : Colors.black87)
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Mês/Ano', border: OutlineInputBorder()),
-                      value: _mesSelecionado,
-                      items: [
-                        DropdownMenuItem(value: DateFormat('MM/yyyy').format(DateTime.now()), child: Text(DateFormat('MM/yyyy').format(DateTime.now()))),
-                        DropdownMenuItem(value: DateFormat('MM/yyyy').format(DateTime(DateTime.now().year, DateTime.now().month - 1, 1)), child: Text(DateFormat('MM/yyyy').format(DateTime(DateTime.now().year, DateTime.now().month - 1, 1)))),
-                        DropdownMenuItem(value: DateFormat('MM/yyyy').format(DateTime(DateTime.now().year, DateTime.now().month - 2, 1)), child: Text(DateFormat('MM/yyyy').format(DateTime(DateTime.now().year, DateTime.now().month - 2, 1)))),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() { _mesSelecionado = v; _aplicarFiltros(); });
-                      },
+                    const SizedBox(width: 15),
+                    
+                    Expanded(
+                      flex: 2,
+                      child: _buildLabelAndField(
+                        '2. Bloco / Torre',
+                        DropdownButtonFormField<Map<String, dynamic>?>(
+                          value: _selectedBloco,
+                          decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                          hint: const Text("TODOS OS BLOCOS"),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text("TODOS OS BLOCOS", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._blocos.map((item) => DropdownMenuItem(value: item, child: Text(item['nome']))),
+                          ],
+                          onChanged: (val) {
+                            setState(() => _selectedBloco = val);
+                            if (val != null) _carregarUnidadesEAndares(val['id']);
+                            else setState(() { _selectedAndar = null; _selectedUnidade = null; _andares = []; _unidades = []; });
+                            _aplicarFiltrosLocais();
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Bloco', border: OutlineInputBorder()),
-                      value: _blocoFiltro,
-                      items: blocosDisponiveis.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
-                      onChanged: (v) {
-                        if (v != null) setState(() { _blocoFiltro = v; _aplicarFiltros(); });
-                      },
+                    const SizedBox(width: 15),
+                    
+                    Expanded(
+                      flex: 2,
+                      child: _buildLabelAndField(
+                        '3. Andar',
+                        DropdownButtonFormField<String?>(
+                          value: _selectedAndar,
+                          decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                          hint: Text(
+                            _selectedBloco == null ? "Indisponível (Bloco não selecionado)" : "TODOS OS ANDARES", 
+                            style: TextStyle(color: _selectedBloco == null ? Colors.red[300] : Colors.black87)
+                          ),
+                          disabledHint: const Text("Indisponível (Bloco não selecionado)", style: TextStyle(color: Colors.grey)),
+                          items: _selectedBloco == null ? null : [
+                            const DropdownMenuItem(value: null, child: Text("TODOS OS ANDARES", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._andares.map((andar) => DropdownMenuItem(value: andar, child: Text(andar))),
+                          ],
+                          onChanged: (val) {
+                            setState(() { _selectedAndar = val; _selectedUnidade = null; });
+                            _aplicarFiltrosLocais();
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-                      value: _statusFiltro,
-                      items: const [
-                        DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-                        DropdownMenuItem(value: 'Normal', child: Text('Apenas Normais')),
-                        DropdownMenuItem(value: 'Discrepância', child: Text('Com Discrepância', style: TextStyle(color: Colors.red))),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() { _statusFiltro = v; _aplicarFiltros(); });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  IconButton(
-                    onPressed: _carregarLeituras,
-                    icon: const Icon(Icons.refresh, color: Color(0xFF003366)),
-                    tooltip: "Atualizar Dados",
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
+                    const SizedBox(width: 15),
 
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[200]!),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                    Expanded(
+                      flex: 2,
+                      child: _buildLabelAndField(
+                        '4. Unidade',
+                        DropdownButtonFormField<Map<String, dynamic>?>(
+                          value: _selectedUnidade,
+                          decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                          hint: Text(
+                            _selectedAndar == null ? "Indisponível (Andar não selecionado)" : "TODAS AS UNIDADES",
+                            style: TextStyle(color: _selectedAndar == null ? Colors.red[300] : Colors.black87)
+                          ),
+                          disabledHint: const Text("Indisponível (Andar não selecionado)", style: TextStyle(color: Colors.grey)),
+                          items: (_selectedBloco == null || _selectedAndar == null) ? null : [
+                            const DropdownMenuItem(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map(
+                              (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
+                            ),
+                          ],
+                          onChanged: (_selectedBloco == null || _selectedAndar == null) ? null : (val) {
+                            setState(() => _selectedUnidade = val);
+                            _aplicarFiltrosLocais();
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _buscarDados,
+                        icon: const Icon(Icons.search, color: Colors.white),
+                        label: const Text('BUSCAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], padding: const EdgeInsets.symmetric(horizontal: 24)),
+                      ),
+                    ),
+                  ],
                 ),
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _leiturasFiltradas.isEmpty
-                        ? const Center(child: Text("Nenhuma leitura encontrada com os filtros atuais.", style: TextStyle(fontSize: 16)))
-                        : SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: 1250, 
-                              child: Column(
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[100],
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        _buildHeaderCell("Unidade", 120),
-                                        _buildHeaderCell("Bloco", 120),
-                                        _buildHeaderCell("Data", 150),
-                                        _buildHeaderCell("Anterior", 100),
-                                        _buildHeaderCell("Atual", 100),
-                                        _buildHeaderCell("Consumo", 110),
-                                        _buildHeaderCell("Status", 160),
-                                        _buildHeaderCell("Foto", 80),
-                                        _buildHeaderCell("Ações", 220), 
-                                      ],
-                                    ),
-                                  ),
-                                  const Divider(height: 1, thickness: 1),
-                                  Expanded(
-                                    child: ListView.separated(
-                                      itemCount: _leiturasFiltradas.length,
-                                      separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey[200]),
-                                      itemBuilder: (context, index) {
-                                        final item = _leiturasFiltradas[index];
-                                        
-                                        Color statusColor = Colors.green;
-                                        if (item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA') statusColor = Colors.red;
-                                        if (item['status_leitura']?.toString() == 'PENDENTE') statusColor = Colors.orange;
+              ],
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 20),
 
-                                        return Container(
-                                          color: item['status_leitura']?.toString() == 'ALERTA_DISCREPANCIA' ? Colors.red.withOpacity(0.03) : Colors.transparent,
-                                          child: Row(
-                                            children: [
-                                              _buildDataCell(item['unidade_nome']?.toString() ?? "-", 120, pesoTexto: FontWeight.bold),
-                                              _buildDataCell(item['bloco_nome']?.toString() ?? "-", 120),
-                                              _buildDataCell(item['data_leitura'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(item['data_leitura'].toString())) : "-", 150),
-                                              _buildDataCell("${item['leitura_anterior'] ?? '0'}", 100),
-                                              _buildDataCell("${item['valor_lido'] ?? '0'}", 100, pesoTexto: FontWeight.bold),
-                                              _buildDataCell("${item['consumo'] ?? '0'} m³", 110, corTexto: const Color(0xFF003366), pesoTexto: FontWeight.bold),
-                                              
-                                              Container(
-                                                width: 160,
-                                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                                alignment: Alignment.centerLeft,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: statusColor.withOpacity(0.1),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(color: statusColor.withOpacity(0.5))
-                                                  ),
-                                                  child: Text(
-                                                    item['status_leitura']?.toString() ?? "OK",
-                                                    style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold),
-                                                  ),
-                                                ),
-                                              ),
+        Expanded(
+          child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _leiturasBrutas.isEmpty 
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
+              : _leiturasFiltradas.isEmpty 
+                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Nenhuma leitura corresponde aos filtros selecionados.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
+                // =========================================================================
+                // AQUI ACONTECEU A BLINDAGEM DA TABELA PARA NÃO "ESMAGAR" O BOTÃO
+                // =========================================================================
+                : Card( 
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.vertical, // Rolagem para baixo
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal, // MÁGICA: Rolagem para o lado! Nunca mais amassa o botão!
+                          child: DataTable(
+                            headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
+                            columnSpacing: 30, // Espaço confortável entre colunas
+                            columns: const [
+                              DataColumn(label: Text('Data / Hora', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Bloco / Unidade', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Medidor', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Ant.', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Leitura Atual', style: TextStyle(fontWeight: FontWeight.bold))),
+                              DataColumn(label: Text('Consumo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange))),
+                              DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+                              DataColumn(label: Text('Ações', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+                            ],
+                            rows: _leiturasFiltradas.map((l) {
+                              Color? corFundo = Colors.blue[600];
+                              String tipoStr = l['tipo_medidor']?.toString().toLowerCase() ?? '';
+                              if (tipoStr.contains('quente')) corFundo = Colors.red[600];
+                              else if (tipoStr.contains('gas') || tipoStr.contains('gás')) corFundo = Colors.orange;
 
-                                              Container(
-                                                width: 80,
-                                                alignment: Alignment.center,
-                                                child: item['foto_url'] != null && item['foto_url'].toString().isNotEmpty
-                                                    ? IconButton(
-                                                        icon: const Icon(Icons.image, color: Colors.blue),
-                                                        tooltip: "Ver Foto",
-                                                        onPressed: () => _mostrarFoto(item['foto_url'].toString()),
-                                                      )
-                                                    : const Icon(Icons.image_not_supported, color: Colors.grey, size: 20),
-                                              ),
-
-                                              Container(
-                                                width: 220,
-                                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.start,
-                                                  children: [
-                                                    OutlinedButton.icon(
-                                                      onPressed: () => _mostrarModalEdicao(item),
-                                                      icon: const Icon(Icons.edit, size: 16),
-                                                      label: const Text("Editar"),
-                                                      style: OutlinedButton.styleFrom(
-                                                        foregroundColor: const Color(0xFF003366),
-                                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    IconButton(
-                                                      onPressed: () => _confirmarExclusao(item['id']),
-                                                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                                      tooltip: "Excluir",
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
+                              Color statusColor = Colors.green;
+                              String statusTexto = (l['status_leitura'] ?? 'Concluída').toString().toUpperCase();
+                              if (statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP')) statusColor = Colors.red;
+                              else if (statusTexto.contains('CORRIGIDA')) statusColor = Colors.purple;
+                              else if (statusTexto.contains('PENDENTE')) statusColor = Colors.orange;
+                              return DataRow(
+                                color: statusTexto.contains('ALERTA') || statusTexto.contains('DISCREP') 
+                                    ? MaterialStateProperty.all(Colors.red[50]) 
+                                    : null,
+                                cells: [
+                                  DataCell(Text(l['data_formatada'] ?? l['data_leitura'] ?? '-', style: const TextStyle(fontSize: 13))),
+                                  DataCell(Text("${l['bloco'] ?? l['bloco_nome'] ?? '-'} - ${l['unidade'] ?? l['identificacao'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                                  DataCell(Chip(label: Text((l['tipo_medidor'] ?? 'Desc.').toString().toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: corFundo, padding: EdgeInsets.zero)),
+                                  DataCell(Text(_formatarMedicao(l['leitura_anterior']), style: const TextStyle(fontSize: 13))),
+                                  DataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                                  DataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13))),
+                                  DataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12))),
+                                  
+                                  // O SEU BOTÃO IMENSO E CLICÁVEL AQUI
+                                  DataCell(
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                      label: const Text('EDITAR', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue[700],
+                                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: () => _abrirModalEdicao(l),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
+                              );
+                            }).toList(),
                           ),
-              ),
-            ),
-          ],
+                        ),
+                      ),
+                    ),
+                  ),
         ),
-      ),
+      ],
     );
   }
 }

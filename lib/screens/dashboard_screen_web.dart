@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 
 class DashboardScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
-  final VoidCallback? onAuditarClique; // Comunicação com a MainWeb
+  final VoidCallback? onAuditarClique;
 
   const DashboardScreenWeb({super.key, this.usuarioLogado, this.onAuditarClique});
 
@@ -26,12 +26,13 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
 
   Future<void> _buscarDados() async {
     setState(() => _isLoading = true);
-    
+
     // Extrai o tenant_id do usuário logado ou usa 1 como fallback de segurança
     int tenantId = widget.usuarioLogado?['tenant_id'] ?? 1;
 
     try {
       final response = await http.get(Uri.parse('https://condologic-backend.onrender.com/api/dashboard/resumo?tenant_id=$tenantId'));
+
       if (response.statusCode == 200) {
         setState(() => _resumo = jsonDecode(response.body));
       }
