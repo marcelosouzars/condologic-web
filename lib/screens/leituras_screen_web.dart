@@ -117,19 +117,22 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     }
   }
 
+  // =========================================================================
+  // VACINA APLICADA AQUI: Nunca mais chama a rota getLeiturasAuditoria quebrada.
+  // Puxa as leituras normais e deixa o _aplicarFiltrosLocais() fazer a mágica!
+  // =========================================================================
   Future<void> _buscarDados() async {
     setState(() => _isLoading = true);
     try {
       List<dynamic> dados = [];
-      if (_mostrarApenasAlertas) {
-        dados = await _apiService.getLeiturasAuditoria(widget.tenantId);
-      } else {
-        final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
-        final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
-        dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
-        if (dados.isEmpty && _selectedBloco != null) {
-          dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
-        }
+      
+      final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
+      final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
+      
+      dados = await _apiService.getLeituras(widget.tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr, blocoId: _selectedBloco?['id']);
+      
+      if (dados.isEmpty && _selectedBloco != null) {
+        dados = await _apiService.getLeituras(widget.tenantId, blocoId: _selectedBloco?['id']);
       }
       
       if (mounted) {

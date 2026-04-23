@@ -1,10 +1,8 @@
 // ==========================================>>> dashboard_screen_web.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart'; // IMPORTANTE: Para formatar a data igual a tela de Leituras
-import '../services/api_service_web.dart'; 
+import 'package:intl/intl.dart'; 
+import '../services/api_service_web.dart';
 
 class DashboardScreenWeb extends StatefulWidget {
   final Map<String, dynamic>? usuarioLogado;
@@ -18,8 +16,11 @@ class DashboardScreenWeb extends StatefulWidget {
 }
 
 class _DashboardScreenWebState extends State<DashboardScreenWeb> {
-  Map<String, dynamic> _resumo = {};
-  int _qtdAlertasReais = 0; // Guardará a contagem real e blindada
+  // Variáveis exclusivas controladas 100% pelo Frontend
+  int _totalUnidades = 0;
+  int _totalLidos = 0;
+  int _qtdAlertasReais = 0;
+  
   bool _isLoading = true;
   final ApiServiceWeb _apiService = ApiServiceWeb();
 
@@ -44,45 +45,59 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
     
     int tenantId = widget.condominioAtivo?['id'] ?? widget.usuarioLogado?['tenant_id'] ?? 1;
 
+    int countUnidades = 0;
+    int countLidos = 0;
+    int countAlertas = 0;
+
     try {
-      // 1. Puxa o resumo do backend (para pegar o Total de Unidades e Lidos)
-      final response = await http.get(Uri.parse('https://condologic-backend.onrender.com/api/dashboard/resumo?tenant_id=$tenantId'));
-      if (response.statusCode == 200) {
-        _resumo = jsonDecode(response.body);
+      // ==============================================================================
+      // 1. CONTAR UNIDADES NA RAÇA (Garantia de 100% de acerto ignorando o /resumo)
+      // ==============================================================================
+      try {
+        final blocos = await _apiService.getBlocos(tenantId);
+        for (var bloco in blocos) {
+          final unidades = await _apiService.getUnidadesPorBloco(bloco['id']);
+          countUnidades += (unidades as List).length;
+        }
+      } catch (e) {
+        print("Erro ao contar unidades na mão: $e");
       }
 
       // ==============================================================================
-      // 2. A MÁGICA: Buscar as leituras do mês e contar na mão igual a tela de Leituras!
+      // 2. BUSCAR LEITURAS E ALERTAS USANDO A MESMA REGRA DA TELA DE LEITURAS
       // ==============================================================================
       try {
         DateTime now = DateTime.now();
         String dtInicioStr = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month, 1));
         String dtFimStr = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month + 1, 0));
 
-        // Puxa exatamente a mesma lista que alimenta a tela de Leituras
+        // Puxa exatamente a mesma lista que alimenta a sua tabela de Leituras
         final leiturasDoMes = await _apiService.getLeituras(tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr);
+        countLidos = leiturasDoMes.length;
         
-        int contagemAlertas = 0;
         for (var leitura in leiturasDoMes) {
           String status = (leitura['status_leitura'] ?? '').toString().toUpperCase();
-          // Conta qualquer coisa que tenha ALERTA ou DISCREP no nome
+          // Se tiver "ALERTA" ou "DISCREP" (ex: ALERTA_DISCREPANCIA), nós pegamos!
           if (status.contains('ALERTA') || status.contains('DISCREP')) {
-            contagemAlertas++;
+            countAlertas++;
           }
         }
-        
-        // Atribui o valor real e exato
-        _qtdAlertasReais = contagemAlertas;
-
       } catch (e) {
-        print("Erro ao buscar leituras do mes no dash: $e");
-        // Fallback de segurança se der erro de conexão
-        _qtdAlertasReais = _resumo['alertas_pendentes'] ?? 0;
+        print("Erro ao buscar leituras do mes e alertas: $e");
+      }
+
+      // Atualiza a tela com os dados REAIS calculados pelo aplicativo
+      if (mounted) {
+        setState(() {
+          _totalUnidades = countUnidades;
+          _totalLidos = countLidos;
+          _qtdAlertasReais = countAlertas;
+          _isLoading = false;
+        });
       }
 
     } catch (e) {
-      print("Erro dash: $e");
-    } finally {
+      print("Erro fatal no dash: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -90,12 +105,6 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-
-    int totalUnidades = _resumo['total_unidades'] ?? 0;
-    int totalLidos = _resumo['total_lidos'] ?? 0;
-    
-    // Agora o dashboard obedece a inteligência que criamos no app e ignora o furo do backend
-    int erros = _qtdAlertasReais;
 
     String nomeCondominio = widget.condominioAtivo?['nome'] 
         ?? widget.usuarioLogado?['tenant_nome'] 
@@ -124,16 +133,16 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
           
           Row(
             children: [
-              _cardInformativo("TOTAL DE UNIDADES", totalUnidades.toString(), Icons.home_work, Colors.blue),
+              _cardInformativo("TOTAL DE UNIDADES", _totalUnidades.toString(), Icons.home_work, Colors.blue),
               const SizedBox(width: 25),
-              _cardInformativo("LEITURAS DO MÊS", totalLidos.toString(), Icons.speed, Colors.green),
+              _cardInformativo("LEITURAS DO MÊS", _totalLidos.toString(), Icons.speed, Colors.green),
             ],
           ),
 
           const SizedBox(height: 40),
 
           // SE HOUVER ALERTAS REAIS, MOSTRA A SIRENE VERMELHA
-          if (erros > 0)
+          if (_qtdAlertasReais > 0)
             Container(
               padding: const EdgeInsets.all(30),
               decoration: BoxDecoration(
@@ -151,7 +160,7 @@ class _DashboardScreenWebState extends State<DashboardScreenWeb> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "ATENÇÃO SÍNDICO: $erros DISCREPÂNCIAS DETECTADAS!",
+                          "ATENÇÃO SÍNDICO: $_qtdAlertasReais DISCREPÂNCIAS DETECTADAS!",
                           style: const TextStyle(color: Colors.red, fontSize: 22, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 5),
