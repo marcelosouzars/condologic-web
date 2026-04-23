@@ -312,7 +312,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
         // ===========================================================================
-        // AQUI ESTÁ O RETORNO DO NOME DO CONDOMÍNIO NA BARRA SUPERIOR
+        // BARRA SUPERIOR: NOME DO CONDOMÍNIO + BOTÃO DE TROCAR (NOVA ORDEM)
         // ===========================================================================
         title: Row(
           children: [
@@ -325,6 +325,21 @@ class _MainWebScreenState extends State<MainWebScreen> {
                 _condominioSelecionado!['nome'] ?? '',
                 style: GoogleFonts.montserrat(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w500),
               ),
+              
+              // O Botão de Trocar Condomínio aparece aqui, logo após o nome!
+              if (_meusCondominios.length > 1) ...[
+                const SizedBox(width: 15),
+                TextButton.icon(
+                  onPressed: _abrirSeletorCondominio,
+                  icon: const Icon(Icons.swap_horiz, color: Colors.white, size: 18),
+                  label: const Text('TROCAR CONDOMÍNIO', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.blue[800], // Azul um pouco mais escuro para destacar
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                )
+              ]
             ]
           ],
         ),
@@ -332,15 +347,12 @@ class _MainWebScreenState extends State<MainWebScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
-          // Mostra o botão de trocar condomínio APENAS se tiver mais de 1 (útil para Síndicos Profissionais ou Master)
-          if (_meusCondominios.length > 1)
-            IconButton(icon: const Icon(Icons.swap_horiz, color: Colors.white), tooltip: "Trocar Condomínio", onPressed: _abrirSeletorCondominio),
+          // O ícone solto que ficava aqui foi removido, agora é tudo no botão central!
           
           const SizedBox(width: 15),
           Center(
             child: ActionChip(
               avatar: Icon(Icons.person, color: Colors.blue[900], size: 18),
-              // Mostra se o cara é o Chefe (Master) ou Síndico para você não ter mais dúvidas de quem está logado kkkk
               label: Text("${_usuarioLogado?['nome'] ?? 'Usuário'} ${isMaster ? '(Master)' : '(Síndico)'}", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
               backgroundColor: Colors.white,
               onPressed: _abrirModalAlterarSenha,
