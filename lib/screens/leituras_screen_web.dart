@@ -117,15 +117,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     }
   }
 
-  // =========================================================================
-  // VACINA APLICADA AQUI: Nunca mais chama a rota getLeiturasAuditoria quebrada.
-  // Puxa as leituras normais e deixa o _aplicarFiltrosLocais() fazer a mágica!
-  // =========================================================================
   Future<void> _buscarDados() async {
     setState(() => _isLoading = true);
     try {
       List<dynamic> dados = [];
-      
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
       
@@ -154,7 +149,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     setState(() {
       _leiturasFiltradas = _leiturasBrutas.where((leitura) {
         bool passaData = true;
-        
         if (!_mostrarApenasAlertas) {
           try {
             String dataStr = (leitura['data_formatada'] ?? leitura['data_leitura'] ?? '').toString();
@@ -277,9 +271,14 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     );
   }
 
+  // =========================================================================
+  // MODAL DE EDIÇÃO ATUALIZADO: Agora com Justificativa e Rota de Auditoria
+  // =========================================================================
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
+    TextEditingController obsController = TextEditingController();
     bool isSaving = false;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -296,7 +295,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                 ],
               ),
               content: SizedBox(
-                width: 320,
+                width: 350,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,8 +308,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                         children: [
                           Text("Medidor: ${(leitura['tipo_medidor'] ?? '').toString().toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                           const SizedBox(height: 5),
-                          Text("Leitura Anterior: ${_formatarMedicao(leitura['leitura_anterior'])} m³", style: const TextStyle(color: Colors.black87)),
-                          Text("Lido pela IA: ${_formatarMedicao(leitura['valor_lido'])} m³", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                          Text("Status Atual: ${leitura['status_leitura']}", style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -321,7 +319,19 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       decoration: const InputDecoration(
                         labelText: "Novo Valor Correto (m³)", 
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.speed)
+                        prefixIcon: Icon(Icons.speed),
+                        hintText: "Ex: 12.345"
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: obsController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: "Justificativa da Alteração", 
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.comment),
+                        hintText: "Ex: Erro de leitura da IA"
                       ),
                     ),
                     if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
@@ -337,16 +347,32 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                   icon: const Icon(Icons.check, color: Colors.white),
                   onPressed: isSaving ? null : () async {
-                    if (valorController.text.isEmpty) return;
+                    if (valorController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Informe o valor!"), backgroundColor: Colors.red));
+                       return;
+                    }
+                    if (obsController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Informe a justificativa!"), backgroundColor: Colors.red));
+                       return;
+                    }
+
                     setStateDialog(() => isSaving = true);
                     try {
-                      double novoValor = double.parse(valorController.text.replaceAll(',', '.'));
-                      await _apiService.corrigirLeitura(leitura['id'], novoValor);
+                      // MÁGICA: Converte vírgula para ponto antes de enviar para o banco
+                      String valorFinal = valorController.text.replaceAll(',', '.');
+                      
+                      // USANDO A ROTA DE AUDITORIA (A que realmente limpa as discrepâncias)
+                      await _apiService.auditarLeitura(
+                        leitura['id'], 
+                        'corrigir', 
+                        valorFinal, 
+                        obsController.text
+                      );
                       
                       if (mounted) {
                         Navigator.pop(ctx);
                         _buscarDados(); 
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada com sucesso!"), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura alterada e auditada com sucesso!"), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       setStateDialog(() => isSaving = false);
@@ -542,21 +568,18 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), Text("Nenhuma leitura encontrada.", style: TextStyle(color: Colors.red[600], fontSize: 16, fontWeight: FontWeight.bold))]))
               : _leiturasFiltradas.isEmpty 
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.filter_alt_off, size: 80, color: Colors.grey[300]), const SizedBox(height: 10), const Text("Nenhuma leitura corresponde aos filtros selecionados.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]))
-                // =========================================================================
-                // AQUI ACONTECEU A BLINDAGEM DA TABELA PARA NÃO "ESMAGAR" O BOTÃO
-                // =========================================================================
                 : Card( 
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: SingleChildScrollView(
-                        scrollDirection: Axis.vertical, // Rolagem para baixo
+                        scrollDirection: Axis.vertical, 
                         child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal, // MÁGICA: Rolagem para o lado! Nunca mais amassa o botão!
+                          scrollDirection: Axis.horizontal, 
                           child: DataTable(
                             headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
-                            columnSpacing: 30, // Espaço confortável entre colunas
+                            columnSpacing: 30, 
                             columns: const [
                               DataColumn(label: Text('Data / Hora', style: TextStyle(fontWeight: FontWeight.bold))),
                               DataColumn(label: Text('Bloco / Unidade', style: TextStyle(fontWeight: FontWeight.bold))),
@@ -590,8 +613,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                                   DataCell(Text(_formatarMedicao(l['valor_lido']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
                                   DataCell(Text('${_formatarMedicao(l['consumo'])} m³', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13))),
                                   DataCell(Text(statusTexto, style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 12))),
-                                  
-                                  // O SEU BOTÃO IMENSO E CLICÁVEL AQUI
                                   DataCell(
                                     ElevatedButton.icon(
                                       icon: const Icon(Icons.edit, color: Colors.white, size: 16),
