@@ -311,7 +311,23 @@ class _MainWebScreenState extends State<MainWebScreen> {
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
-        title: Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold)),
+        // ===========================================================================
+        // AQUI ESTÁ O RETORNO DO NOME DO CONDOMÍNIO NA BARRA SUPERIOR
+        // ===========================================================================
+        title: Row(
+          children: [
+            Text('CondoLogic', style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold)),
+            if (_condominioSelecionado != null) ...[
+              const SizedBox(width: 10),
+              const Text('|', style: TextStyle(color: Colors.white54, fontSize: 18)),
+              const SizedBox(width: 10),
+              Text(
+                _condominioSelecionado!['nome'] ?? '',
+                style: GoogleFonts.montserrat(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+            ]
+          ],
+        ),
         backgroundColor: Colors.blue[900], 
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white), 
