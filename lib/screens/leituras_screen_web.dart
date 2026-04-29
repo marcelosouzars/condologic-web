@@ -63,9 +63,32 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     return v.toStringAsFixed(3).replaceAll('.', ',');
   }
 
-  // --- Função auxiliar para ordenar números dentro de strings (Ex: Apto 2 vs Apto 10) ---
+  // =========================================================================
+  // FUNÇÕES DE ORDENAÇÃO INTELIGENTE (ALFANUMÉRICA)
+  // =========================================================================
+  
+  // Garante que "Apto 2" venha antes de "Apto 10"
   String _padNumbers(String input) {
     return input.replaceAllMapped(RegExp(r'\d+'), (Match m) => m[0]!.padLeft(10, '0'));
+  }
+
+  // Ordenação específica para andares (Térreo primeiro, depois numérico)
+  int _compararAndares(String a, String b) {
+    String valA = a.toLowerCase().trim();
+    String valB = b.toLowerCase().trim();
+    
+    if (valA == valB) return 0;
+    if (valA.contains('térreo')) return -1;
+    if (valB.contains('térreo')) return 1;
+
+    // Extrai apenas os números para comparar como Inteiro
+    final numA = int.tryParse(valA.replaceAll(RegExp(r'[^0-9]'), ''));
+    final numB = int.tryParse(valB.replaceAll(RegExp(r'[^0-9]'), ''));
+
+    if (numA != null && numB != null) {
+      return numA.compareTo(numB);
+    }
+    return valA.compareTo(valB);
   }
 
   Widget _buildLabelAndField(String label, Widget field) {
@@ -83,8 +106,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     try {
       final dados = await _apiService.getBlocos(widget.tenantId);
       
-      // ORDENAÇÃO CRESCENTE: Blocos
-      dados.sort((a, b) => a['nome'].toString().compareTo(b['nome'].toString()));
+      // Ordena Blocos Alfabeticamente
+      dados.sort((a, b) => a['nome'].toString().toLowerCase().compareTo(b['nome'].toString().toLowerCase()));
 
       if (mounted) {
         setState(() {
@@ -105,7 +128,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     try {
       final dados = await _apiService.getUnidadesPorBloco(blocoId);
       
-      // ORDENAÇÃO CRESCENTE: Unidades
+      // Ordena Unidades Numericamente (Apto 2 < Apto 10)
       dados.sort((a, b) => _padNumbers(a['identificacao'].toString()).compareTo(_padNumbers(b['identificacao'].toString())));
 
       if (mounted) {
@@ -113,15 +136,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
           _unidades = dados;
           final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
           
-          // ORDENAÇÃO CRESCENTE: Andares (Térreo primeiro, depois números)
-          andaresUnicos.sort((a, b) {
-            if (a.toLowerCase() == 'térreo') return -1;
-            if (b.toLowerCase() == 'térreo') return 1;
-            final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
-            final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
-            if (numA != null && numB != null) return numA.compareTo(numB);
-            return a.compareTo(b); 
-          });
+          // Ordena Andares usando nossa regra inteligente
+          andaresUnicos.sort((a, b) => _compararAndares(a, b));
           
           _andares = andaresUnicos;
           _selectedAndar = null;
@@ -288,7 +304,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   }
 
   // =========================================================================
-  // MODAL: INCLUSÃO MANUAL DE LEITURA (PLANO B DO SÍNDICO)
+  // MODAL: INCLUSÃO MANUAL DE LEITURA (COM ORDENAÇÃO CORRIGIDA)
   // =========================================================================
   void _abrirModalInclusaoManual() {
     Map<String, dynamic>? blocoSel;
@@ -303,7 +319,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     TextEditingController valorController = TextEditingController();
     TextEditingController obsController = TextEditingController();
     
-    // Mes de referência = Mes Atual
     DateTime agora = DateTime.now();
     String mesReferencia = "${agora.month.toString().padLeft(2, '0')}/${agora.year}";
 
@@ -321,20 +336,13 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               try {
                 final dados = await _apiService.getUnidadesPorBloco(blocoId);
                 
-                // ORDENAÇÃO CRESCENTE NO MODAL: Unidades
+                // ORDENAÇÃO: Unidades (Apto 2 antes do 10)
                 dados.sort((a, b) => _padNumbers(a['identificacao'].toString()).compareTo(_padNumbers(b['identificacao'].toString())));
 
                 final andaresUnicos = dados.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
                 
-                // ORDENAÇÃO CRESCENTE NO MODAL: Andares
-                andaresUnicos.sort((a, b) {
-                  if (a.toLowerCase() == 'térreo') return -1;
-                  if (b.toLowerCase() == 'térreo') return 1;
-                  final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
-                  final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
-                  if (numA != null && numB != null) return numA.compareTo(numB);
-                  return a.compareTo(b); 
-                });
+                // ORDENAÇÃO: Andares (Térreo, 1, 2, 3...)
+                andaresUnicos.sort((a, b) => _compararAndares(a, b));
 
                 setStateModal(() {
                   unidadesModal = dados;
@@ -354,7 +362,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               try {
                 final dados = await _apiService.getMedidoresUnidade(widget.tenantId, unidadeId);
                 
-                // ORDENAÇÃO CRESCENTE NO MODAL: Medidores (Alfabética)
+                // Ordenação Alfabética dos Medidores
                 dados.sort((a, b) => (a['tipo_medidor'] ?? '').toString().compareTo((b['tipo_medidor'] ?? '').toString()));
 
                 setStateModal(() {
@@ -733,7 +741,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                           hint: const Text("TODOS OS BLOCOS"),
                           items: [
                             const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODOS OS BLOCOS", style: TextStyle(fontWeight: FontWeight.bold))),
-                            ..._blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))),
+                            ..._blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))).toList(),
                           ],
                           onChanged: (val) {
                             setState(() => _selectedBloco = val);
@@ -760,7 +768,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                           disabledHint: const Text("Indisponível (Bloco não selecionado)", style: TextStyle(color: Colors.grey)),
                           items: _selectedBloco == null ? null : [
                             const DropdownMenuItem<String?>(value: null, child: Text("TODOS OS ANDARES", style: TextStyle(fontWeight: FontWeight.bold))),
-                            ..._andares.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))),
+                            ..._andares.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))).toList(),
                           ],
                           onChanged: (val) {
                             setState(() { _selectedAndar = val; _selectedUnidade = null; });
@@ -787,7 +795,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                             const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
                             ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map<DropdownMenuItem<Map<String, dynamic>?>>(
                               (item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text("Unidade ${item['identificacao']}"))
-                            ),
+                            ).toList(),
                           ],
                           onChanged: (_selectedBloco == null || _selectedAndar == null) ? null : (val) {
                             setState(() => _selectedUnidade = val);
