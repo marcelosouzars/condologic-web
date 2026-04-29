@@ -301,7 +301,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             
-            // Função interna para recarregar andares e unidades no Modal
             Future<void> carregarAndaresEUnidadesModal(int blocoId) async {
               try {
                 final dados = await _apiService.getUnidadesPorBloco(blocoId);
@@ -320,7 +319,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               }
             }
 
-            // Função interna para carregar medidores daquela unidade
             Future<void> carregarMedidoresModal(int unidadeId) async {
               setStateModal(() => isLoadingMedidores = true);
               try {
@@ -370,7 +368,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<Map<String, dynamic>?>(
                         value: blocoSel,
                         decoration: const InputDecoration(labelText: '1. Selecione o Bloco', border: OutlineInputBorder(), isDense: true),
-                        items: _blocos.map((item) => DropdownMenuItem(value: item, child: Text(item['nome']))).toList(),
+                        // TIPAGEM EXPLÍCITA CORRIGIDA
+                        items: _blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))).toList(),
                         onChanged: (val) {
                           setStateModal(() { blocoSel = val; });
                           if (val != null) carregarAndaresEUnidadesModal(val['id']);
@@ -381,7 +380,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<String?>(
                         value: andarSel,
                         decoration: const InputDecoration(labelText: '2. Selecione o Andar', border: OutlineInputBorder(), isDense: true),
-                        items: blocoSel == null ? null : andaresModal.map((andar) => DropdownMenuItem(value: andar, child: Text(andar))).toList(),
+                        // TIPAGEM EXPLÍCITA CORRIGIDA
+                        items: blocoSel == null ? null : andaresModal.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))).toList(),
                         onChanged: (val) {
                           setStateModal(() { andarSel = val; unidadeSel = null; medidorSel = null; medidoresModal = []; });
                         },
@@ -391,8 +391,9 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<Map<String, dynamic>?>(
                         value: unidadeSel,
                         decoration: const InputDecoration(labelText: '3. Selecione a Unidade', border: OutlineInputBorder(), isDense: true),
-                        items: andarSel == null ? null : unidadesModal.where((u) => (u['andar']?.toString() ?? 'Térreo') == andarSel).map(
-                          (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
+                        // TIPAGEM EXPLÍCITA CORRIGIDA
+                        items: andarSel == null ? null : unidadesModal.where((u) => (u['andar']?.toString() ?? 'Térreo') == andarSel).map<DropdownMenuItem<Map<String, dynamic>?>>(
+                          (item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text("Unidade ${item['identificacao']}"))
                         ).toList(),
                         onChanged: (val) {
                           setStateModal(() => unidadeSel = val);
@@ -407,7 +408,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                         DropdownButtonFormField<Map<String, dynamic>?>(
                           value: medidorSel,
                           decoration: const InputDecoration(labelText: '4. Selecione o Medidor', border: OutlineInputBorder(), isDense: true),
-                          items: unidadeSel == null ? null : medidoresModal.map((item) => DropdownMenuItem(value: item, child: Text(item['tipo_medidor'].toString().toUpperCase()))).toList(),
+                          // TIPAGEM EXPLÍCITA CORRIGIDA
+                          items: unidadeSel == null ? null : medidoresModal.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['tipo_medidor'].toString().toUpperCase()))).toList(),
                           onChanged: (val) => setStateModal(() => medidorSel = val),
                         ),
                       const SizedBox(height: 20),
@@ -457,7 +459,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       String valorFinal = valorController.text.replaceAll(',', '.');
                       await _apiService.incluirLeituraManual({
                         'tenant_id': widget.tenantId,
-                        'medidor_id': medidorSel!['medidor_id'], // Cuidado que a api de dashboard pode retornar 'id' ou 'medidor_id' dependendo do join
+                        'medidor_id': medidorSel!['medidor_id'], 
                         'valor_lido': valorFinal,
                         'mes_referencia': mesReferencia,
                         'observacao': obsController.text.isEmpty ? 'Inclusão manual via Web' : obsController.text
@@ -634,7 +636,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                 ),
                 const SizedBox(width: 20),
                 
-                // >>> NOVO BOTÃO VERDE AQUI <<<
                 ElevatedButton.icon(
                   onPressed: _abrirModalInclusaoManual,
                   icon: const Icon(Icons.add, color: Colors.white),
@@ -700,9 +701,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                           value: _selectedBloco,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           hint: const Text("TODOS OS BLOCOS"),
+                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: [
-                            const DropdownMenuItem(value: null, child: Text("TODOS OS BLOCOS", style: TextStyle(fontWeight: FontWeight.bold))),
-                            ..._blocos.map((item) => DropdownMenuItem(value: item, child: Text(item['nome']))),
+                            const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODOS OS BLOCOS", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))),
                           ],
                           onChanged: (val) {
                             setState(() => _selectedBloco = val);
@@ -727,9 +729,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                             style: TextStyle(color: _selectedBloco == null ? Colors.red[300] : Colors.black87)
                           ),
                           disabledHint: const Text("Indisponível (Bloco não selecionado)", style: TextStyle(color: Colors.grey)),
+                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: _selectedBloco == null ? null : [
-                            const DropdownMenuItem(value: null, child: Text("TODOS OS ANDARES", style: TextStyle(fontWeight: FontWeight.bold))),
-                            ..._andares.map((andar) => DropdownMenuItem(value: andar, child: Text(andar))),
+                            const DropdownMenuItem<String?>(value: null, child: Text("TODOS OS ANDARES", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._andares.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))),
                           ],
                           onChanged: (val) {
                             setState(() { _selectedAndar = val; _selectedUnidade = null; });
@@ -752,10 +755,11 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                             style: TextStyle(color: _selectedAndar == null ? Colors.red[300] : Colors.black87)
                           ),
                           disabledHint: const Text("Indisponível (Andar não selecionado)", style: TextStyle(color: Colors.grey)),
+                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: (_selectedBloco == null || _selectedAndar == null) ? null : [
-                            const DropdownMenuItem(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
-                            ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map(
-                              (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
+                            const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
+                            ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map<DropdownMenuItem<Map<String, dynamic>?>>(
+                              (item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text("Unidade ${item['identificacao']}"))
                             ),
                           ],
                           onChanged: (_selectedBloco == null || _selectedAndar == null) ? null : (val) {
