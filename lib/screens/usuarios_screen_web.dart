@@ -27,7 +27,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   final _nomeController = TextEditingController();
   final _cpfController = TextEditingController();
   final _senhaController = TextEditingController();
-  final FocusNode _cpfFocus = FocusNode(); // <--- Para focar no CPF se der erro
+  final FocusNode _cpfFocus = FocusNode(); 
   
   String _tipoSelecionado = 'Síndico';
   String _nivelSelecionado = 'usuario';
@@ -88,7 +88,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
   }
 
   String _getNomeCondominio(int? tenantId) {
-    if (tenantId == null) return 'Acesso Global / Master';
+    if (tenantId == null) return 'Nenhum (Acesso Independente)';
     final condo = _condominios.firstWhere((c) => c['id'] == tenantId, orElse: () => null);
     return condo != null ? condo['nome'] : 'Condomínio Desconhecido';
   }
@@ -148,13 +148,11 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
     bool erroCpf = false; 
     bool isSaving = false;
     
-    // Preenche se for edição, limpa se for inclusão
     if (usuarioEdit != null) {
       _nomeController.text = usuarioEdit['nome'] ?? '';
       _cpfController.text = usuarioEdit['cpf'] ?? '';
-      _senhaController.text = ''; // Senha vem vazia na edição (só digita se quiser trocar)
+      _senhaController.text = ''; 
       
-      // Tratamento para garantir que o tipo existe no Dropdown
       String t = usuarioEdit['tipo'] ?? 'Zelador';
       if (!['Síndico', 'Zelador', 'Leiturista', 'Administrador'].contains(t)) t = 'Zelador';
       _tipoSelecionado = t;
@@ -165,7 +163,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
 
       _condominioSelecionado = usuarioEdit['tenant_id'];
       
-      // Validação extra caso o condomínio do usuário tenha sido deletado do banco
       if (_condominioSelecionado != null && !_condominios.any((c) => c['id'] == _condominioSelecionado)) {
         _condominioSelecionado = null;
       }
@@ -189,10 +186,13 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
             Future<void> salvarUsuario() async {
               int? tenantParaSalvar = isMaster ? _condominioSelecionado : _usuarioLogado?['tenant_id'];
 
-              if (tenantParaSalvar == null) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um Condomínio!'), backgroundColor: Colors.red));
+              // A MÁGICA AQUI: O Síndico Zelador/Leiturista TEM que ter condomínio.
+              // Mas se o MASTER estiver criando um usuário, pode deixar o condomínio NULL!
+              if (!isMaster && tenantParaSalvar == null) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Você precisa estar vinculado a um condomínio para cadastrar equipe!'), backgroundColor: Colors.red));
                 return;
               }
+              
               if (_nomeController.text.isEmpty || _cpfController.text.isEmpty || (usuarioEdit == null && _senhaController.text.isEmpty)) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os campos obrigatórios!'), backgroundColor: Colors.red));
                 return;
@@ -215,7 +215,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
 
                 http.Response response;
 
-                // Se tem ID, é Edição (PUT). Se não tem, é Criação (POST).
                 if (usuarioEdit != null) {
                   response = await http.put(
                     Uri.parse('$baseUrl/api/admin/usuario/${usuarioEdit['id']}'),
@@ -231,11 +230,10 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                 }
 
                 if (response.statusCode == 201 || response.statusCode == 200) {
-                  Navigator.pop(context); // SÓ FECHA SE DER SUCESSO
+                  Navigator.pop(context); 
                   if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: Colors.green));
                   _carregarDados(); 
                 } else if (response.statusCode == 400 && response.body.contains('CPF')) {
-                  // BANCO AVISOU QUE CPF EXISTE! Pinta de vermelho e foca no campo.
                   setStateModal(() { isSaving = false; erroCpf = true; });
                   _cpfFocus.requestFocus();
                   if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Este CPF já está cadastrado em outro usuário!'), backgroundColor: Colors.red));
@@ -257,16 +255,23 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // SE FOR MASTER, PERMITE ESCOLHER "NENHUM"
                       if (isMaster) ...[
-                        DropdownButtonFormField<int>(
+                        DropdownButtonFormField<int?>(
                           value: _condominioSelecionado,
                           decoration: const InputDecoration(labelText: 'Vincular ao Condomínio', border: OutlineInputBorder()),
-                          items: _condominios.map<DropdownMenuItem<int>>((c) {
-                            return DropdownMenuItem<int>(
-                              value: c['id'],
-                              child: Text(c['nome']),
-                            );
-                          }).toList(),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null, 
+                              child: Text('NENHUM (Síndico cadastrará depois)', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold))
+                            ),
+                            ..._condominios.map<DropdownMenuItem<int?>>((c) {
+                              return DropdownMenuItem<int?>(
+                                value: c['id'],
+                                child: Text(c['nome']),
+                              );
+                            }).toList(),
+                          ],
                           onChanged: (novo) => setStateModal(() => _condominioSelecionado = novo),
                         ),
                         const SizedBox(height: 15),
@@ -278,14 +283,12 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                       ),
                       const SizedBox(height: 15),
                       
-                      // CAMPO DE CPF COM BORDA DINÂMICA
                       TextField(
                         controller: _cpfController, 
                         focusNode: _cpfFocus,
                         decoration: InputDecoration(
                           labelText: 'CPF (Apenas números)', 
                           border: const OutlineInputBorder(),
-                          // Pinta a borda de vermelho se der erro de CPF duplicado
                           enabledBorder: OutlineInputBorder(
                             borderSide: BorderSide(color: erroCpf ? Colors.red : Colors.grey, width: erroCpf ? 2.0 : 1.0),
                           ),
@@ -363,7 +366,7 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
             Text('USUÁRIOS / EQUIPE', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
             if (podeEditar)
               ElevatedButton.icon(
-                onPressed: () => _abrirModal(), // <--- Chama modal de Inclusão
+                onPressed: () => _abrirModal(), 
                 icon: const Icon(Icons.person_add, color: Colors.white), 
                 label: const Text('INCLUIR USUÁRIO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)),
@@ -398,7 +401,6 @@ class _UsuariosScreenWebState extends State<UsuariosScreenWeb> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // BOTÃO DE EDITAR AGORA ABRE O MODAL COM OS DADOS
                               if (podeEditar)
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: Colors.orange), 
