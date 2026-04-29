@@ -1,7 +1,7 @@
 // ==========================================>>> api_service_web.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart'; // <--- IMPORTANTE PARA O F5 (WEB)
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 class ApiServiceWeb {
   static const String baseUrl = 'https://condologic-backend.onrender.com/api';
@@ -42,7 +42,7 @@ class ApiServiceWeb {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        await salvarSessao(data); // <--- SALVA A SESSÃO NA HORA QUE ENTRA
+        await salvarSessao(data); 
         return data;
       } else {
         final error = jsonDecode(response.body);
@@ -321,6 +321,20 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
 
+  // >>> NOVA ROTA: INCLUSÃO MANUAL DA LEITURA PELO SÍNDICO <<<
+  Future<void> incluirLeituraManual(Map<String, dynamic> dados) async {
+    final url = Uri.parse('$baseUrl/leitura/manual');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode != 201) {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro ao incluir leitura manual');
+    }
+  }
+
   Future<List<dynamic>> getMedidoresUnidade(int tenantId, int unidadeId) async {
     final response = await http.get(Uri.parse('$baseUrl/dashboard/unidades?tenant_id=$tenantId'));
     if (response.statusCode == 200) {
@@ -354,6 +368,25 @@ class ApiServiceWeb {
     if (response.statusCode != 200) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao auditar a leitura');
+    }
+  }
+
+  // --- IMPORTAÇÃO ---
+  Future<Map<String, dynamic>> importarHistorico(int tenantId, List<Map<String, dynamic>> dados) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/importacao/historico'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'tenant_id': tenantId,
+        'dados': dados
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      final erro = jsonDecode(response.body);
+      throw Exception(erro['error'] ?? 'Erro desconhecido na importação.');
     }
   }
 }

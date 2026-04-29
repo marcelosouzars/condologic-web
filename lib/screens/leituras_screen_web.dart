@@ -272,7 +272,219 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   }
 
   // =========================================================================
-  // MODAL DE EDIÇÃO ATUALIZADO: Agora com Justificativa e Rota de Auditoria
+  // MODAL: INCLUSÃO MANUAL DE LEITURA (PLANO B DO SÍNDICO)
+  // =========================================================================
+  void _abrirModalInclusaoManual() {
+    Map<String, dynamic>? blocoSel;
+    String? andarSel;
+    Map<String, dynamic>? unidadeSel;
+    Map<String, dynamic>? medidorSel;
+
+    List<String> andaresModal = [];
+    List<dynamic> unidadesModal = [];
+    List<dynamic> medidoresModal = [];
+
+    TextEditingController valorController = TextEditingController();
+    TextEditingController obsController = TextEditingController();
+    
+    // Mes de referência = Mes Atual
+    DateTime agora = DateTime.now();
+    String mesReferencia = "${agora.month.toString().padLeft(2, '0')}/${agora.year}";
+
+    bool isSaving = false;
+    bool isLoadingMedidores = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            
+            // Função interna para recarregar andares e unidades no Modal
+            Future<void> carregarAndaresEUnidadesModal(int blocoId) async {
+              try {
+                final dados = await _apiService.getUnidadesPorBloco(blocoId);
+                final andaresUnicos = dados.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
+                andaresUnicos.sort();
+                setStateModal(() {
+                  unidadesModal = dados;
+                  andaresModal = andaresUnicos;
+                  andarSel = null;
+                  unidadeSel = null;
+                  medidorSel = null;
+                  medidoresModal = [];
+                });
+              } catch (e) {
+                print("Erro ao carregar $e");
+              }
+            }
+
+            // Função interna para carregar medidores daquela unidade
+            Future<void> carregarMedidoresModal(int unidadeId) async {
+              setStateModal(() => isLoadingMedidores = true);
+              try {
+                final dados = await _apiService.getMedidoresUnidade(widget.tenantId, unidadeId);
+                setStateModal(() {
+                  medidoresModal = dados;
+                  medidorSel = null;
+                  isLoadingMedidores = false;
+                });
+              } catch (e) {
+                setStateModal(() => isLoadingMedidores = false);
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Row(
+                children: [
+                  Icon(Icons.add_task, color: Colors.green[800]),
+                  const SizedBox(width: 10),
+                  Text("Inclusão Manual de Leitura", style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange)),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.orange),
+                            SizedBox(width: 10),
+                            Expanded(child: Text("A leitura inserida por aqui será automaticamente marcada como VALIDADA e entrará para o cálculo.", style: TextStyle(fontSize: 12, color: Colors.black87))),
+                          ],
+                        ),
+                      ),
+                      
+                      Text("Mês de Referência: $mesReferencia", style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 15),
+
+                      DropdownButtonFormField<Map<String, dynamic>?>(
+                        value: blocoSel,
+                        decoration: const InputDecoration(labelText: '1. Selecione o Bloco', border: OutlineInputBorder(), isDense: true),
+                        items: _blocos.map((item) => DropdownMenuItem(value: item, child: Text(item['nome']))).toList(),
+                        onChanged: (val) {
+                          setStateModal(() { blocoSel = val; });
+                          if (val != null) carregarAndaresEUnidadesModal(val['id']);
+                        },
+                      ),
+                      const SizedBox(height: 10),
+
+                      DropdownButtonFormField<String?>(
+                        value: andarSel,
+                        decoration: const InputDecoration(labelText: '2. Selecione o Andar', border: OutlineInputBorder(), isDense: true),
+                        items: blocoSel == null ? null : andaresModal.map((andar) => DropdownMenuItem(value: andar, child: Text(andar))).toList(),
+                        onChanged: (val) {
+                          setStateModal(() { andarSel = val; unidadeSel = null; medidorSel = null; medidoresModal = []; });
+                        },
+                      ),
+                      const SizedBox(height: 10),
+
+                      DropdownButtonFormField<Map<String, dynamic>?>(
+                        value: unidadeSel,
+                        decoration: const InputDecoration(labelText: '3. Selecione a Unidade', border: OutlineInputBorder(), isDense: true),
+                        items: andarSel == null ? null : unidadesModal.where((u) => (u['andar']?.toString() ?? 'Térreo') == andarSel).map(
+                          (item) => DropdownMenuItem(value: item, child: Text("Unidade ${item['identificacao']}"))
+                        ).toList(),
+                        onChanged: (val) {
+                          setStateModal(() => unidadeSel = val);
+                          if (val != null) carregarMedidoresModal(val['id']);
+                        },
+                      ),
+                      const SizedBox(height: 10),
+
+                      if (isLoadingMedidores)
+                        const Padding(padding: EdgeInsets.all(10), child: Center(child: CircularProgressIndicator()))
+                      else
+                        DropdownButtonFormField<Map<String, dynamic>?>(
+                          value: medidorSel,
+                          decoration: const InputDecoration(labelText: '4. Selecione o Medidor', border: OutlineInputBorder(), isDense: true),
+                          items: unidadeSel == null ? null : medidoresModal.map((item) => DropdownMenuItem(value: item, child: Text(item['tipo_medidor'].toString().toUpperCase()))).toList(),
+                          onChanged: (val) => setStateModal(() => medidorSel = val),
+                        ),
+                      const SizedBox(height: 20),
+
+                      TextField(
+                        controller: valorController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: "5. Valor Lido (M³)", 
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.speed),
+                          hintText: "Ex: 15.400"
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+
+                      TextField(
+                        controller: obsController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: "6. Justificativa / Observação (Opcional)", 
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.comment),
+                        ),
+                      ),
+                      
+                      if (isSaving) const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator()))
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+                  icon: const Icon(Icons.save, color: Colors.white),
+                  onPressed: isSaving ? null : () async {
+                    if (medidorSel == null || valorController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecione o medidor e informe o valor!"), backgroundColor: Colors.red));
+                       return;
+                    }
+                    setStateModal(() => isSaving = true);
+                    try {
+                      String valorFinal = valorController.text.replaceAll(',', '.');
+                      await _apiService.incluirLeituraManual({
+                        'tenant_id': widget.tenantId,
+                        'medidor_id': medidorSel!['medidor_id'], // Cuidado que a api de dashboard pode retornar 'id' ou 'medidor_id' dependendo do join
+                        'valor_lido': valorFinal,
+                        'mes_referencia': mesReferencia,
+                        'observacao': obsController.text.isEmpty ? 'Inclusão manual via Web' : obsController.text
+                      });
+                      
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _buscarDados(); 
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Leitura inserida com sucesso!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      setStateModal(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                    }
+                  },
+                  label: const Text("SALVAR LEITURA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // =========================================================================
+  // MODAL DE EDIÇÃO
   // =========================================================================
   void _abrirModalEdicao(Map<String, dynamic> leitura) {
     TextEditingController valorController = TextEditingController(text: _formatarMedicao(leitura['valor_lido']).replaceAll(',', '.'));
@@ -358,10 +570,8 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
 
                     setStateDialog(() => isSaving = true);
                     try {
-                      // MÁGICA: Converte vírgula para ponto antes de enviar para o banco
                       String valorFinal = valorController.text.replaceAll(',', '.');
                       
-                      // USANDO A ROTA DE AUDITORIA (A que realmente limpa as discrepâncias)
                       await _apiService.auditarLeitura(
                         leitura['id'], 
                         'corrigir', 
@@ -423,6 +633,20 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                   ],
                 ),
                 const SizedBox(width: 20),
+                
+                // >>> NOVO BOTÃO VERDE AQUI <<<
+                ElevatedButton.icon(
+                  onPressed: _abrirModalInclusaoManual,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text("INCLUIR LEITURA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                ),
+                const SizedBox(width: 20),
+
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
                   decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
