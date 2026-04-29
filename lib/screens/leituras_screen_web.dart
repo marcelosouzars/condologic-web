@@ -63,6 +63,11 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
     return v.toStringAsFixed(3).replaceAll('.', ',');
   }
 
+  // --- Função auxiliar para ordenar números dentro de strings (Ex: Apto 2 vs Apto 10) ---
+  String _padNumbers(String input) {
+    return input.replaceAllMapped(RegExp(r'\d+'), (Match m) => m[0]!.padLeft(10, '0'));
+  }
+
   Widget _buildLabelAndField(String label, Widget field) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,6 +82,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _carregarBlocos() async {
     try {
       final dados = await _apiService.getBlocos(widget.tenantId);
+      
+      // ORDENAÇÃO CRESCENTE: Blocos
+      dados.sort((a, b) => a['nome'].toString().compareTo(b['nome'].toString()));
+
       if (mounted) {
         setState(() {
           _blocos = dados;
@@ -95,10 +104,16 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
   Future<void> _carregarUnidadesEAndares(int blocoId) async {
     try {
       final dados = await _apiService.getUnidadesPorBloco(blocoId);
+      
+      // ORDENAÇÃO CRESCENTE: Unidades
+      dados.sort((a, b) => _padNumbers(a['identificacao'].toString()).compareTo(_padNumbers(b['identificacao'].toString())));
+
       if (mounted) {
         setState(() {
           _unidades = dados;
           final andaresUnicos = _unidades.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
+          
+          // ORDENAÇÃO CRESCENTE: Andares (Térreo primeiro, depois números)
           andaresUnicos.sort((a, b) {
             if (a.toLowerCase() == 'térreo') return -1;
             if (b.toLowerCase() == 'térreo') return 1;
@@ -107,6 +122,7 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             if (numA != null && numB != null) return numA.compareTo(numB);
             return a.compareTo(b); 
           });
+          
           _andares = andaresUnicos;
           _selectedAndar = null;
           _selectedUnidade = null;
@@ -304,8 +320,22 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
             Future<void> carregarAndaresEUnidadesModal(int blocoId) async {
               try {
                 final dados = await _apiService.getUnidadesPorBloco(blocoId);
+                
+                // ORDENAÇÃO CRESCENTE NO MODAL: Unidades
+                dados.sort((a, b) => _padNumbers(a['identificacao'].toString()).compareTo(_padNumbers(b['identificacao'].toString())));
+
                 final andaresUnicos = dados.map((u) => u['andar']?.toString() ?? 'Térreo').toSet().toList();
-                andaresUnicos.sort();
+                
+                // ORDENAÇÃO CRESCENTE NO MODAL: Andares
+                andaresUnicos.sort((a, b) {
+                  if (a.toLowerCase() == 'térreo') return -1;
+                  if (b.toLowerCase() == 'térreo') return 1;
+                  final numA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
+                  final numB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
+                  if (numA != null && numB != null) return numA.compareTo(numB);
+                  return a.compareTo(b); 
+                });
+
                 setStateModal(() {
                   unidadesModal = dados;
                   andaresModal = andaresUnicos;
@@ -323,6 +353,10 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
               setStateModal(() => isLoadingMedidores = true);
               try {
                 final dados = await _apiService.getMedidoresUnidade(widget.tenantId, unidadeId);
+                
+                // ORDENAÇÃO CRESCENTE NO MODAL: Medidores (Alfabética)
+                dados.sort((a, b) => (a['tipo_medidor'] ?? '').toString().compareTo((b['tipo_medidor'] ?? '').toString()));
+
                 setStateModal(() {
                   medidoresModal = dados;
                   medidorSel = null;
@@ -368,7 +402,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<Map<String, dynamic>?>(
                         value: blocoSel,
                         decoration: const InputDecoration(labelText: '1. Selecione o Bloco', border: OutlineInputBorder(), isDense: true),
-                        // TIPAGEM EXPLÍCITA CORRIGIDA
                         items: _blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))).toList(),
                         onChanged: (val) {
                           setStateModal(() { blocoSel = val; });
@@ -380,7 +413,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<String?>(
                         value: andarSel,
                         decoration: const InputDecoration(labelText: '2. Selecione o Andar', border: OutlineInputBorder(), isDense: true),
-                        // TIPAGEM EXPLÍCITA CORRIGIDA
                         items: blocoSel == null ? null : andaresModal.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))).toList(),
                         onChanged: (val) {
                           setStateModal(() { andarSel = val; unidadeSel = null; medidorSel = null; medidoresModal = []; });
@@ -391,7 +423,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                       DropdownButtonFormField<Map<String, dynamic>?>(
                         value: unidadeSel,
                         decoration: const InputDecoration(labelText: '3. Selecione a Unidade', border: OutlineInputBorder(), isDense: true),
-                        // TIPAGEM EXPLÍCITA CORRIGIDA
                         items: andarSel == null ? null : unidadesModal.where((u) => (u['andar']?.toString() ?? 'Térreo') == andarSel).map<DropdownMenuItem<Map<String, dynamic>?>>(
                           (item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text("Unidade ${item['identificacao']}"))
                         ).toList(),
@@ -408,7 +439,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                         DropdownButtonFormField<Map<String, dynamic>?>(
                           value: medidorSel,
                           decoration: const InputDecoration(labelText: '4. Selecione o Medidor', border: OutlineInputBorder(), isDense: true),
-                          // TIPAGEM EXPLÍCITA CORRIGIDA
                           items: unidadeSel == null ? null : medidoresModal.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['tipo_medidor'].toString().toUpperCase()))).toList(),
                           onChanged: (val) => setStateModal(() => medidorSel = val),
                         ),
@@ -701,7 +731,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                           value: _selectedBloco,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           hint: const Text("TODOS OS BLOCOS"),
-                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: [
                             const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODOS OS BLOCOS", style: TextStyle(fontWeight: FontWeight.bold))),
                             ..._blocos.map<DropdownMenuItem<Map<String, dynamic>?>>((item) => DropdownMenuItem<Map<String, dynamic>?>(value: item, child: Text(item['nome']))),
@@ -729,7 +758,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                             style: TextStyle(color: _selectedBloco == null ? Colors.red[300] : Colors.black87)
                           ),
                           disabledHint: const Text("Indisponível (Bloco não selecionado)", style: TextStyle(color: Colors.grey)),
-                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: _selectedBloco == null ? null : [
                             const DropdownMenuItem<String?>(value: null, child: Text("TODOS OS ANDARES", style: TextStyle(fontWeight: FontWeight.bold))),
                             ..._andares.map<DropdownMenuItem<String?>>((andar) => DropdownMenuItem<String?>(value: andar, child: Text(andar))),
@@ -755,7 +783,6 @@ class _LeiturasScreenWebState extends State<LeiturasScreenWeb> {
                             style: TextStyle(color: _selectedAndar == null ? Colors.red[300] : Colors.black87)
                           ),
                           disabledHint: const Text("Indisponível (Andar não selecionado)", style: TextStyle(color: Colors.grey)),
-                          // TIPAGEM EXPLÍCITA AQUI TAMBÉM
                           items: (_selectedBloco == null || _selectedAndar == null) ? null : [
                             const DropdownMenuItem<Map<String, dynamic>?>(value: null, child: Text("TODAS AS UNIDADES", style: TextStyle(fontWeight: FontWeight.bold))),
                             ..._unidades.where((u) => _selectedAndar == null || (u['andar']?.toString() ?? 'Térreo') == _selectedAndar).map<DropdownMenuItem<Map<String, dynamic>?>>(
