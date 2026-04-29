@@ -121,7 +121,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
     final novaSenhaCtrl = TextEditingController();
     final confirmaSenhaCtrl = TextEditingController();
     bool isSaving = false;
-    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -252,17 +251,19 @@ class _MainWebScreenState extends State<MainWebScreen> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     
     bool isMaster = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'master' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'master';
+    bool isAdmin = _usuarioLogado?['nivel_acesso']?.toString().toLowerCase() == 'admin' || _usuarioLogado?['nivel']?.toString().toLowerCase() == 'admin';
     int tenantIdAtual = _condominioSelecionado?['id'] ?? _usuarioLogado?['tenant_id'] ?? 1;
-
+    
     // ================================================================================
     // MONTAGEM DINÂMICA DO MENU (MASTER NO TOPO, LOGO ABAIXO DE DASHBOARD)
     // ================================================================================
     List<NavigationRailDestination> menuItens = [
       const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Dashboard')),
     ];
-
-    if (isMaster) {
-      menuItens.add(const NavigationRailDestination(icon: Icon(Icons.domain), selectedIcon: Icon(Icons.domain), label: Text('Gestão de Condomínios')));
+    
+    // >>> MODIFICAÇÃO AQUI: Tanto Master quanto Admin(Síndico) veem a gestão de condomínios
+    if (isMaster || isAdmin) {
+      menuItens.add(NavigationRailDestination(icon: const Icon(Icons.domain), selectedIcon: const Icon(Icons.domain), label: Text(isMaster ? 'Gestão de Condomínios' : 'Meus Condomínios')));
     }
 
     menuItens.addAll([
@@ -272,9 +273,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
     ]);
-
-    // O índice da tela de "Leituras" muda dependendo se a opção do Master existe ou não!
-    int indiceDaTelaDeLeituras = isMaster ? 4 : 3;
+    
+    // O índice da tela de "Leituras" muda dependendo se a opção do Master/Admin existe ou não!
+    int indiceDaTelaDeLeituras = (isMaster || isAdmin) ? 4 : 3;
 
     // ================================================================================
     // MONTAGEM DINÂMICA DAS TELAS NA MESMA ORDEM DO MENU
@@ -291,8 +292,9 @@ class _MainWebScreenState extends State<MainWebScreen> {
         },
       ),
     ];
-
-    if (isMaster) {
+    
+    // >>> MODIFICAÇÃO AQUI TAMBÉM
+    if (isMaster || isAdmin) {
       telas.add(CondominiosScreenWeb(key: ValueKey('master_$tenantIdAtual'), usuarioLogado: _usuarioLogado));
     }
 
@@ -307,7 +309,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
     ]);
-
+    
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
@@ -348,7 +350,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         iconTheme: const IconThemeData(color: Colors.white), 
         actions: [
           // O ícone solto que ficava aqui foi removido, agora é tudo no botão central!
-          
           const SizedBox(width: 15),
           Center(
             child: ActionChip(

@@ -83,12 +83,18 @@ class ApiServiceWeb {
     throw Exception('Erro ao carregar condomínios');
   }
 
-  Future<void> criarCondominio(Map<String, dynamic> dados) async {
+  // >>> NOVA LÓGICA DE CRIAÇÃO (SaaS) <<<
+  Future<void> criarCondominio(Map<String, dynamic> dados, {int? usuarioId, String? nivel}) async {
     final url = Uri.parse('$baseUrl/admin/condominio');
+    
+    final corpo = Map<String, dynamic>.from(dados);
+    if (usuarioId != null) corpo['usuario_id'] = usuarioId;
+    if (nivel != null) corpo['nivel'] = nivel;
+
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
+      body: jsonEncode(corpo),
     );
 
     if (response.statusCode != 201) throw Exception('Erro ao criar: ${response.body}');
@@ -321,7 +327,6 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
 
-  // >>> NOVA ROTA: INCLUSÃO MANUAL DA LEITURA PELO SÍNDICO <<<
   Future<void> incluirLeituraManual(Map<String, dynamic> dados) async {
     final url = Uri.parse('$baseUrl/leitura/manual');
     final response = await http.post(

@@ -121,7 +121,11 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
       if (idEdicao != null) {
         await _apiService.editarCondominio(idEdicao, dados);
       } else {
-        await _apiService.criarCondominio(dados);
+        await _apiService.criarCondominio(
+          dados,
+          usuarioId: widget.usuarioLogado?['id'],
+          nivel: widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel']
+        );
       }
       
       if (mounted) {
@@ -337,16 +341,20 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    String nivelUsuario = widget.usuarioLogado?['nivel_acesso'] ?? widget.usuarioLogado?['nivel'] ?? '';
-    bool podeEditar = (widget.usuarioLogado == null || nivelUsuario.toLowerCase() == 'master');
+    String nivelUsuario = widget.usuarioLogado?['nivel_acesso']?.toString().toLowerCase() ?? widget.usuarioLogado?['nivel']?.toString().toLowerCase() ?? '';
+    bool isMaster = (nivelUsuario == 'master');
+    bool isAdmin = (nivelUsuario == 'admin');
+    
+    // Tanto Master quanto Admin(Síndico) podem criar e editar
+    bool podeCriarEditar = isMaster || isAdmin || widget.usuarioLogado == null;
 
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween, 
           children: [
-            Text('GESTÃO DE CONDOMÍNIOS', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
-            if (podeEditar) 
+            Text(isMaster ? 'GESTÃO GLOBAL' : 'MEUS CONDOMÍNIOS', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+            if (podeCriarEditar) 
               ElevatedButton.icon(
                 onPressed: () => _abrirModal(), 
                 icon: const Icon(Icons.add, color: Colors.white), 
@@ -397,13 +405,13 @@ class _CondominiosScreenWebState extends State<CondominiosScreenWeb> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min, 
                           children: [
-                            if (podeEditar) 
+                            if (podeCriarEditar) 
                               IconButton(
                                 icon: const Icon(Icons.edit, color: Colors.orange), 
                                 tooltip: "Editar Condomínio", 
                                 onPressed: () => _abrirModal(item: c)
                               ),
-                            if (podeEditar) 
+                            if (isMaster) 
                               IconButton(
                                 icon: const Icon(Icons.delete, color: Colors.red), 
                                 tooltip: "Excluir Condomínio", 
