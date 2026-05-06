@@ -1,3 +1,5 @@
+// ==========================================>>> importacao_screen_web.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' hide Border, BorderStyle, TextSpan;
 import 'package:csv/csv.dart';
 import 'package:universal_html/html.dart' as html;
+import 'package:http/http.dart' as http; // <--- PACOTE HTTP ADICIONADO AQUI
 import '../services/api_service_web.dart';
 
 class ImportacaoScreenWeb extends StatefulWidget {
@@ -165,7 +168,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Padrao_CondoLogic'];
     excel.setDefaultSheet('Padrao_CondoLogic');
-
     sheetObject.appendRow([
       TextCellValue('Bloco'), TextCellValue('Unidade'), TextCellValue('Tipo'),
       TextCellValue('Mês'), TextCellValue('Data Leitura'), TextCellValue('Leitura Anterior'),
@@ -173,7 +175,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
       TextCellValue('Custo Adicional'), TextCellValue('Total'), TextCellValue('Houve Troca de Medidor?'),
       TextCellValue('Validade Medidor'), TextCellValue('Observação'), TextCellValue('Imagem')
     ]);
-
     sheetObject.appendRow([
       TextCellValue('A'), TextCellValue('201'), TextCellValue('Água'),
       TextCellValue('02/2026'), TextCellValue('2026-02-19'), TextCellValue('140.500'),
@@ -181,7 +182,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
       TextCellValue('0'), TextCellValue('0'), TextCellValue('Não'),
       TextCellValue('31/12/2030'), TextCellValue(''), TextCellValue('https://link-da-foto.com')
     ]);
-
     var fileBytes = excel.save();
     if (fileBytes != null) {
       final blob = html.Blob([Uint8List.fromList(fileBytes)], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -230,7 +230,7 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
 
   double _safeNumber(String v) {
     if (v.isEmpty || v == '-') return 0.0;
-    String temp = v.replaceAll('R\$', '').trim();
+    String temp = v.replaceAll(r'R$', '').trim();
     if (temp.contains('.') && temp.contains(',')) {
       temp = temp.replaceAll('.', '').replaceAll(',', '.');
     } else {
@@ -254,7 +254,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
       _dadosPreparados = [];
       _dadosPreview = [];
     });
-
     try {
       List<Map<String, dynamic>> dadosExtraidos = [];
       final bytes = _ficheiroSelecionado!.bytes!;
@@ -313,7 +312,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
         // ==============================================================
         // A MÁGICA: Detecção Blindada de Excel MS-DOS (CP850)
         // ==============================================================
-        // Se o síndico salvou como "CSV (MS-DOS)", o 'Á' vira 'µ' e o 'á' vira um espaço NBSP (\xA0)
         if (csvString.contains('µgua') || csvString.contains('G\xA0s') || csvString.contains('G s')) {
           csvString = csvString
               .replaceAll('µ', 'Á')           // Conserta o Á
@@ -337,7 +335,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
           fieldDelimiter: delimiter,
           eol: eol,
         );
-
         if (csvTable.length <= 1) {
           csvTable = const CsvToListConverter().convert(
             csvString,
@@ -392,7 +389,6 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
           d['leitura_anterior'], d['leitura_atual'], d['consumo']
         ];
       }).toList();
-
       setState(() {
         _dadosPreparados = dadosExtraidos;
         _dadosPreview = prev;
@@ -410,14 +406,32 @@ class _ImportacaoScreenWebState extends State<ImportacaoScreenWeb> {
   Future<void> _enviarParaBackend() async {
     setState(() => _isLoading = true);
     try {
-      final resposta = await _apiService.importarHistorico(_selectedTenantId!, _dadosPreparados);
-      setState(() {
-        _resultadoImportacao = resposta;
-        _isLoading = false;
-        _dadosPreparados = []; 
-        _dadosPreview = [];
-        _ficheiroSelecionado = null;
+      // MÁGICA: URL Direta para ignorar problemas no api_service_web
+      final urlOficial = Uri.parse('https://condologic-backend.onrender.com/api/importacao/historico');
+      
+      final body = jsonEncode({
+        'tenant_id': _selectedTenantId,
+        'dados': _dadosPreparados
       });
+
+      final respostaHttp = await http.post(
+        urlOficial,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
+
+      if (respostaHttp.statusCode == 200) {
+        final resposta = jsonDecode(respostaHttp.body);
+        setState(() {
+          _resultadoImportacao = resposta;
+          _isLoading = false;
+          _dadosPreparados = []; 
+          _dadosPreview = [];
+          _ficheiroSelecionado = null;
+        });
+      } else {
+        throw Exception("Erro do Servidor: ${respostaHttp.body}");
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       _mostrarMensagem(e.toString().replaceAll('Exception: ', ''), isError: true);
