@@ -11,6 +11,7 @@ import 'usuarios_screen_web.dart';
 import 'leituras_screen_web.dart';
 import 'relatorios_screen_web.dart';
 import 'exportacao_screen_web.dart';
+import 'importacao_screen_web.dart'; // <<< 1. IMPORTAÇÃO ADICIONADA AQUI
 import 'login_screen_web.dart';
 import '../services/api_service_web.dart';
 
@@ -272,6 +273,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
       const NavigationRailDestination(icon: Icon(Icons.water_drop_outlined), selectedIcon: Icon(Icons.water_drop), label: Text('Leituras')),
       const NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Relatórios')),
       const NavigationRailDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: Text('Exportar')),
+      // <<< 2. ITEM DE MENU DE IMPORTAÇÃO INSERIDO AQUI
+      const NavigationRailDestination(icon: Icon(Icons.upload_file_outlined), selectedIcon: Icon(Icons.upload_file), label: Text('Importar')),
     ]);
     
     // O índice da tela de "Leituras" muda dependendo se a opção do Master/Admin existe ou não!
@@ -308,6 +311,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
       ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
       ExportacaoScreenWeb(key: ValueKey('exp_$tenantIdAtual')), 
+      // <<< 3. TELA DE IMPORTAÇÃO INSERIDA NA LISTA DE TELAS AQUI
+      ImportacaoScreenWeb(key: ValueKey('imp_$tenantIdAtual')),
     ]);
     
     return Scaffold(
