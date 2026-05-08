@@ -56,7 +56,6 @@ class ApiServiceWeb {
   // --- ALTERAR SENHA ---
   Future<void> alterarSenha(int userId, String senhaAtual, String novaSenha) async {
     final url = Uri.parse('$baseUrl/auth/alterar-senha');
-
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -66,7 +65,6 @@ class ApiServiceWeb {
         'nova_senha': novaSenha
       }),
     );
-
     if (response.statusCode != 200) {
       final erro = jsonDecode(response.body);
       throw Exception(erro['error'] ?? 'Erro ao alterar a senha.');
@@ -77,26 +75,34 @@ class ApiServiceWeb {
   Future<List<dynamic>> getCondominios({int? usuarioId, String? nivel}) async {
     String query = '$baseUrl/admin/condominios';
     if (usuarioId != null) query += '?usuario_id=$usuarioId&nivel=$nivel';
-    
     final response = await http.get(Uri.parse(query));
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao carregar condomínios');
   }
 
-  // >>> NOVA LÓGICA DE CRIAÇÃO (SaaS) <<<
+  // --- NOVA ROTA: EXPORTAÇÃO PADRÃO ADMINISTRADORA ---
+  Future<List<dynamic>> getLeiturasParaExportacao(int tenantId, String mesReferencia) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/leitura/exportar?tenant_id=$tenantId&mes_referencia=$mesReferencia'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Falha ao carregar dados para exportação');
+      }
+    } catch (e) {
+      throw Exception('Erro de conexão: $e');
+    }
+  }
+
   Future<void> criarCondominio(Map<String, dynamic> dados, {int? usuarioId, String? nivel}) async {
     final url = Uri.parse('$baseUrl/admin/condominio');
-    
     final corpo = Map<String, dynamic>.from(dados);
     if (usuarioId != null) corpo['usuario_id'] = usuarioId;
     if (nivel != null) corpo['nivel'] = nivel;
-
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(corpo),
-    );
-
+    final response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode(corpo));
     if (response.statusCode != 201) throw Exception('Erro ao criar: ${response.body}');
   }
 
@@ -113,7 +119,7 @@ class ApiServiceWeb {
     }
   }
 
-  // --- EQUIPE E VÍNCULOS ---
+  // --- EQUIPE, BLOCOS, UNIDADES E USUÁRIOS (MANTIDOS) ---
   Future<List<dynamic>> buscarUsuarios(String termo) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/usuarios/buscar?termo=$termo'));
     if (response.statusCode == 200) return jsonDecode(response.body);
@@ -136,108 +142,43 @@ class ApiServiceWeb {
     if (response.statusCode != 200) throw Exception('Erro ao desvincular');
   }
 
-  // --- BLOCOS ---
   Future<int> criarBloco(int tenantId, String nome) async {
     final url = Uri.parse('$baseUrl/admin/bloco');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'tenant_id': tenantId,
-        'nome': nome
-      }),
-    );
-
-    if (response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      return data['id'];
-    } else {
-      throw Exception('Erro ao criar bloco');
-    }
+    final response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'tenant_id': tenantId, 'nome': nome}));
+    if (response.statusCode == 201) return jsonDecode(response.body)['id'];
+    throw Exception('Erro ao criar bloco');
   }
 
   Future<List<dynamic>> getBlocos(int tenantId) async {
-    final url = Uri.parse('$baseUrl/admin/blocos/$tenantId');
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Erro ao listar blocos');
-    }
+    final response = await http.get(Uri.parse('$baseUrl/admin/blocos/$tenantId'));
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Erro ao listar blocos');
   }
 
   Future<void> excluirBloco(int blocoId, String nivelAcesso) async {
-    final url = Uri.parse('$baseUrl/admin/bloco/$blocoId?nivel=$nivelAcesso');
-    final response = await http.delete(url);
-
-    if (response.statusCode != 200) {
-      String msgErro = 'Erro desconhecido ao excluir bloco.';
-      try {
-        final erro = jsonDecode(response.body);
-        if (erro is Map && erro.containsKey('error')) {
-          msgErro = erro['error'];
-        }
-      } catch (_) {}
-      throw Exception(msgErro);
-    }
+    final response = await http.delete(Uri.parse('$baseUrl/admin/bloco/$blocoId?nivel=$nivelAcesso'));
+    if (response.statusCode != 200) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao excluir bloco');
   }
 
   Future<void> gerarEstruturaCompleta(Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/admin/bloco/estrutura-completa');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-
-    if (response.statusCode != 201) {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao gerar estrutura');
-    }
+    final response = await http.post(Uri.parse('$baseUrl/admin/bloco/estrutura-completa'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    if (response.statusCode != 201) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao gerar estrutura');
   }
 
-  // --- UNIDADES ---
   Future<List<dynamic>> getUnidadesPorBloco(int blocoId) async {
-    final url = Uri.parse('$baseUrl/admin/unidades/$blocoId');
-    final response = await http.get(url);
+    final response = await http.get(Uri.parse('$baseUrl/admin/unidades/$blocoId'));
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao listar unidades');
   }
 
   Future<void> criarUnidade(Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/admin/unidade');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-
-    if (response.statusCode != 201) {
-      String msgErro = 'Erro desconhecido ao criar unidade.';
-      try {
-        final erro = jsonDecode(response.body);
-        if (erro is Map && erro.containsKey('error')) {
-          msgErro = erro['error'];
-        }
-      } catch (_) {}
-      throw Exception(msgErro);
-    }
+    final response = await http.post(Uri.parse('$baseUrl/admin/unidade'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    if (response.statusCode != 201) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao criar unidade');
   }
 
   Future<void> excluirUnidade(int blocoId, String identificacao) async {
-    final url = Uri.parse('$baseUrl/admin/unidade/$blocoId/$identificacao');
-    final response = await http.delete(url);
-
-    if (response.statusCode != 200) {
-      String msgErro = 'Erro desconhecido ao excluir unidade.';
-      try {
-        final erro = jsonDecode(response.body);
-        if (erro is Map && erro.containsKey('error')) {
-          msgErro = erro['error'];
-        }
-      } catch (_) {}
-      throw Exception(msgErro);
-    }
+    final response = await http.delete(Uri.parse('$baseUrl/admin/unidade/$blocoId/$identificacao'));
+    if (response.statusCode != 200) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao excluir unidade');
   }
 
   Future<void> gerarUnidadesLote(Map<String, dynamic> dados) async {
@@ -245,55 +186,28 @@ class ApiServiceWeb {
   }
 
   Future<void> gerarUnidadesInteligente(Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/admin/unidades/gerador-inteligente');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-
-    if (response.statusCode != 201) {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao gerar unidades inteligentemente');
-    }
+    final response = await http.post(Uri.parse('$baseUrl/admin/unidades/gerador-inteligente'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    if (response.statusCode != 201) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao gerar unidades');
   }
 
-  // --- USUÁRIOS ---
   Future<List<dynamic>> getUsuarios() async {
-    final url = Uri.parse('$baseUrl/admin/usuarios');
-    final response = await http.get(url);
+    final response = await http.get(Uri.parse('$baseUrl/admin/usuarios'));
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao listar usuários');
   }
 
   Future<void> criarUsuario(Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/admin/usuario');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-
-    if (response.statusCode != 201) {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao criar usuário');
-    }
+    final response = await http.post(Uri.parse('$baseUrl/admin/usuario'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    if (response.statusCode != 201) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao criar usuário');
   }
 
   Future<void> editarUsuario(int id, Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/admin/usuario/$id');
-    final response = await http.put(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-
+    final response = await http.put(Uri.parse('$baseUrl/admin/usuario/$id'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
     if (response.statusCode != 200) throw Exception('Erro ao editar usuário');
   }
 
   Future<void> excluirUsuario(int id) async {
-    final url = Uri.parse('$baseUrl/admin/usuario/$id');
-    final response = await http.delete(url);
+    final response = await http.delete(Uri.parse('$baseUrl/admin/usuario/$id'));
     if (response.statusCode != 200) throw Exception('Erro ao excluir usuário');
   }
 
@@ -303,7 +217,6 @@ class ApiServiceWeb {
     if (dtInicio != null && dtFim != null) queryUrl += '&data_inicio=$dtInicio&data_fim=$dtFim';
     else if (mes != null && ano != null) queryUrl += '&mes=$mes&ano=$ano';
     if (blocoId != null) queryUrl += '&bloco_id=$blocoId';
-
     final response = await http.get(Uri.parse(queryUrl));
     return jsonDecode(response.body);
   }
@@ -311,33 +224,18 @@ class ApiServiceWeb {
   Future<void> corrigirLeitura(int id, double novoValor, {String? novaFotoBase64}) async {
     final url = Uri.parse('$baseUrl/leitura/$id');
     final body = {'novo_valor': novoValor, if (novaFotoBase64 != null) 'nova_foto': novaFotoBase64};
-
-    final response = await http.put(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-
+    final response = await http.put(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
     if (response.statusCode != 200) throw Exception('Erro ao corrigir leitura');
   }
 
   Future<void> excluirLeitura(int id) async {
-    final url = Uri.parse('$baseUrl/leitura/$id');
-    final response = await http.delete(url);
+    final response = await http.delete(Uri.parse('$baseUrl/leitura/$id'));
     if (response.statusCode != 200) throw Exception('Erro ao excluir leitura');
   }
 
   Future<void> incluirLeituraManual(Map<String, dynamic> dados) async {
-    final url = Uri.parse('$baseUrl/leitura/manual');
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(dados),
-    );
-    if (response.statusCode != 201) {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao incluir leitura manual');
-    }
+    final response = await http.post(Uri.parse('$baseUrl/leitura/manual'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(dados));
+    if (response.statusCode != 201) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao incluir leitura manual');
   }
 
   Future<List<dynamic>> getMedidoresUnidade(int tenantId, int unidadeId) async {
@@ -349,9 +247,7 @@ class ApiServiceWeb {
     return [];
   }
 
-  // ==========================================
-  // NOVAS ROTAS: AUDITORIA E ALERTAS (SÍNDICO)
-  // ==========================================
+  // --- AUDITORIA E IMPORTAÇÃO (MANTIDOS) ---
   Future<Map<String, dynamic>> getResumoAlertas(int tenantId) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/dashboard/alertas?tenant_id=$tenantId'));
     if (response.statusCode == 200) return jsonDecode(response.body);
@@ -365,33 +261,13 @@ class ApiServiceWeb {
   }
 
   Future<void> auditarLeitura(int leituraId, String acao, String novoValor, String observacao) async {
-    final response = await http.put(
-      Uri.parse('$baseUrl/admin/leitura/auditar/$leituraId'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'acao': acao, 'novo_valor': novoValor, 'observacao': observacao}),
-    );
-    if (response.statusCode != 200) {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro ao auditar a leitura');
-    }
+    final response = await http.put(Uri.parse('$baseUrl/admin/leitura/auditar/$leituraId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'acao': acao, 'novo_valor': novoValor, 'observacao': observacao}));
+    if (response.statusCode != 200) throw Exception(jsonDecode(response.body)['error'] ?? 'Erro ao auditar');
   }
 
-  // --- IMPORTAÇÃO ---
   Future<Map<String, dynamic>> importarHistorico(int tenantId, List<Map<String, dynamic>> dados) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/importacao/historico'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'tenant_id': tenantId,
-        'dados': dados
-      }),
-    );
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return jsonDecode(response.body);
-    } else {
-      final erro = jsonDecode(response.body);
-      throw Exception(erro['error'] ?? 'Erro desconhecido na importação.');
-    }
+    final response = await http.post(Uri.parse('$baseUrl/importacao/historico'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'tenant_id': tenantId, 'dados': dados}));
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception(jsonDecode(response.body)['error'] ?? 'Erro na importação.');
   }
 }
