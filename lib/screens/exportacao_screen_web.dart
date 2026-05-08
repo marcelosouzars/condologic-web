@@ -30,8 +30,8 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   
   List<dynamic> _leituras = [];
+  int? _idCondominioAtivo; // Variável interna para o ID
   
-  // Período de datas reativado
   DateTimeRange _dataSelecionada = DateTimeRange(
     start: DateTime(DateTime.now().year, DateTime.now().month, 1),
     end: DateTime.now(),
@@ -42,8 +42,10 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   @override
   void initState() {
     super.initState();
-    // Não precisamos mais carregar a lista de condomínios aqui, 
-    // pois usaremos o widget.condominioSelecionado vindo do painel.
+    // REGRA: Ao iniciar, já assume o condomínio que você está trabalhando no momento
+    if (widget.condominioSelecionado != null) {
+      _idCondominioAtivo = widget.condominioSelecionado!['id'];
+    }
   }
 
   String _formatarMedicao(dynamic valor) {
@@ -148,8 +150,9 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   }
 
   Future<void> _buscarDadosParaExportacao() async {
-    if (widget.condominioSelecionado == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione um condomínio no painel superior.'), backgroundColor: Colors.orange));
+    // Agora ele verifica o ID que já pegamos automaticamente no initState
+    if (_idCondominioAtivo == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Atenção: Nenhum condomínio ativo detectado no sistema.'), backgroundColor: Colors.orange));
         return;
     }
 
@@ -158,10 +161,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
       
-      // Usa o ID do condomínio que já está selecionado no sistema
-      final tenantId = widget.condominioSelecionado!['id'];
-      
-      final dados = await _apiService.getLeituras(tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr);
+      final dados = await _apiService.getLeituras(_idCondominioAtivo!, dtInicio: dtInicioStr, dtFim: dtFimStr);
       
       if (mounted) {
         setState(() { _leituras = dados; _isLoading = false; });
@@ -342,7 +342,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
             padding: const EdgeInsets.all(20.0),
             child: Row(
               children: [
-                // Identificação visual do condomínio ativo (não é mais um Dropdown)
+                // Identificação visual do condomínio ativo
                 Expanded(
                   flex: 2,
                   child: Container(
