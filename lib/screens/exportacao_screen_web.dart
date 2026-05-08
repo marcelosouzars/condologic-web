@@ -30,7 +30,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   final ApiServiceWeb _apiService = ApiServiceWeb();
   
   List<dynamic> _leituras = [];
-  int? _idCondominioAtivo; // Variável interna para o ID
+  int? _idCondominioAtivo; 
   
   DateTimeRange _dataSelecionada = DateTimeRange(
     start: DateTime(DateTime.now().year, DateTime.now().month, 1),
@@ -42,7 +42,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   @override
   void initState() {
     super.initState();
-    // REGRA: Ao iniciar, já assume o condomínio que você está trabalhando no momento
+    // REGRA DE OURO: Assume o condomínio injetado pelo painel principal
     if (widget.condominioSelecionado != null) {
       _idCondominioAtivo = widget.condominioSelecionado!['id'];
     }
@@ -150,7 +150,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   }
 
   Future<void> _buscarDadosParaExportacao() async {
-    // Agora ele verifica o ID que já pegamos automaticamente no initState
     if (_idCondominioAtivo == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Atenção: Nenhum condomínio ativo detectado no sistema.'), backgroundColor: Colors.orange));
         return;
@@ -342,7 +341,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
             padding: const EdgeInsets.all(20.0),
             child: Row(
               children: [
-                // Identificação visual do condomínio ativo
+                // Identificação visual do condomínio ativo (CORRIGIDO: mostra o nome do condominioSelecionado)
                 Expanded(
                   flex: 2,
                   child: Container(
