@@ -74,13 +74,31 @@ class ApiServiceWeb {
   // --- CONDOMÍNIOS ---
   Future<List<dynamic>> getCondominios({int? usuarioId, String? nivel}) async {
     String query = '$baseUrl/admin/condominios';
-    if (usuarioId != null) query += '?usuario_id=$usuarioId&nivel=$nivel';
+    if (usuarioId != null) query += '?usuario_id=$userId&nivel=$nivel';
     final response = await http.get(Uri.parse(query));
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao carregar condomínios');
   }
 
-  // --- NOVA ROTA: EXPORTAÇÃO PADRÃO ADMINISTRADORA ---
+  // --- NOVO MÉTODO: BUSCA DADOS PARA A PLANILHA DA ADMINISTRADORA ---
+  Future<List<dynamic>> getLeiturasParaAdministradora(int tenantId, String dtInicio, String dtFim) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/leitura/exportar-admin?tenant_id=$tenantId&data_inicio=$dtInicio&data_fim=$dtFim'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Falha ao carregar dados para exportação');
+      }
+    } catch (e) {
+      throw Exception('Erro de conexão: $e');
+    }
+  }
+
+  // --- ANTIGA ROTA DE EXPORTAÇÃO (MANTIDA PARA COMPATIBILIDADE) ---
   Future<List<dynamic>> getLeiturasParaExportacao(int tenantId, String mesReferencia) async {
     try {
       final response = await http.get(
@@ -119,7 +137,7 @@ class ApiServiceWeb {
     }
   }
 
-  // --- EQUIPE, BLOCOS, UNIDADES E USUÁRIOS (MANTIDOS) ---
+  // --- EQUIPE, BLOCOS, UNIDADES E USUÁRIOS (MANTIDOS INTEGRALMENTE) ---
   Future<List<dynamic>> buscarUsuarios(String termo) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/usuarios/buscar?termo=$termo'));
     if (response.statusCode == 200) return jsonDecode(response.body);

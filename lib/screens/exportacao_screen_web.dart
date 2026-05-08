@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
+import 'package:excel/excel.dart' as ex; // Prefixo para evitar conflito com Border do Flutter
 import '../services/api_service_web.dart';
 
 class ExportacaoScreenWeb extends StatefulWidget {
@@ -140,7 +141,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
   }
 
   Future<void> _buscarDadosParaExportacao() async {
-    // Tenta pegar o ID do condomínio selecionado ou do usuário logado (SaaS)
     int? tenantId = widget.condominioSelecionado?['id'] ?? widget.usuarioLogado?['tenant_id'];
 
     if (tenantId == null) {
@@ -153,7 +153,8 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       final dtInicioStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.start);
       final dtFimStr = DateFormat('yyyy-MM-dd').format(_dataSelecionada.end);
       
-      final dados = await _apiService.getLeituras(tenantId, dtInicio: dtInicioStr, dtFim: dtFimStr);
+      // Chamada para a nova rota que já traz os dados no padrão da administradora
+      final dados = await _apiService.getLeiturasParaAdministradora(tenantId, dtInicioStr, dtFimStr);
       
       if (mounted) {
         setState(() { _leituras = dados; _isLoading = false; });
@@ -168,13 +169,83 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     }
   }
 
+  // >>> NOVA FUNÇÃO: GERA EXCEL (.XLSX) NO PADRÃO ADMINISTRADORA <<<
+  void _gerarExcelPuro() {
+    if (_leituras.isEmpty) return;
+
+    var excel = ex.Excel.createExcel();
+    ex.Sheet sheet = excel['Leituras'];
+    excel.setDefaultSheet('Leituras');
+
+    // Cabeçalho solicitado
+    List<ex.CellValue> header = [
+      ex.TextCellValue("Bloco"), ex.TextCellValue("Unidade"), ex.TextCellValue("Tipo"),
+      ex.TextCellValue("Mês"), ex.TextCellValue("Data Leitura"), ex.TextCellValue("Leitura Anterior"),
+      ex.TextCellValue("Leitura Atual"), ex.TextCellValue("Consumo"), ex.TextCellValue("Custo"),
+      ex.TextCellValue("Custo Adicional Total"), ex.TextCellValue("Houve Troca de Medidor"),
+      ex.TextCellValue("Validade Medidor"), ex.TextCellValue("Observação"), ex.TextCellValue("Imagem")
+    ];
+    sheet.appendRow(header);
+
+    for (var row in _leituras) {
+      sheet.appendRow([
+        ex.TextCellValue(row['bloco']?.toString() ?? ""),
+        ex.TextCellValue(row['unidade']?.toString() ?? ""),
+        ex.TextCellValue(row['tipo']?.toString() ?? ""),
+        ex.TextCellValue(row['mes']?.toString() ?? ""),
+        ex.TextCellValue(row['data_leitura']?.toString() ?? ""),
+        ex.DoubleCellValue(double.tryParse(row['leitura_anterior']?.toString() ?? "0") ?? 0.0),
+        ex.DoubleCellValue(double.tryParse(row['leitura_atual']?.toString() ?? "0") ?? 0.0),
+        ex.DoubleCellValue(double.tryParse(row['consumo']?.toString() ?? "0") ?? 0.0),
+        ex.DoubleCellValue(double.tryParse(row['custo']?.toString() ?? "0") ?? 0.0),
+        ex.DoubleCellValue(double.tryParse(row['custo_adicional_total']?.toString() ?? "0") ?? 0.0),
+        ex.TextCellValue(row['houve_troca'] ?? "Não"),
+        ex.TextCellValue(row['validade_medidor']?.toString() ?? ""),
+        ex.TextCellValue(row['observacao']?.toString() ?? ""),
+        ex.TextCellValue(row['imagem']?.toString() ?? "")
+      ]);
+    }
+
+    var fileBytes = excel.save();
+    if (fileBytes != null) {
+      final blob = html.Blob([fileBytes], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute("download", "Exportacao_${widget.condominioSelecionado?['nome'] ?? 'CondoLogic'}.xlsx")
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    }
+  }
+
   void _exportarCSV() {
     if (_leituras.isEmpty) return;
-    final nomeCond = widget.condominioSelecionado?['nome'] ?? 'Exportacao';
-    List<List<dynamic>> rows = [["Condomínio", "Data", "Bloco", "Unidade", "Medidor", "Leitura Anterior", "Leitura Atual", "Consumo m3", "Faturado R\$", "Status"]];
+    
+    // Cabeçalho ajustado para o novo padrão solicitado
+    List<List<dynamic>> rows = [[
+      "Bloco", "Unidade", "Tipo", "Mês", "Data Leitura", "Leitura Anterior",
+      "Leitura Atual", "Consumo", "Custo", "Custo Adicional Total",
+      "Houve Troca de Medidor", "Validade Medidor", "Observação", "Imagem"
+    ]];
+
     for (var row in _leituras) {
-      rows.add([nomeCond, row['data_formatada'] ?? '-', row['bloco'] ?? '-', row['unidade'] ?? '-', row['tipo_medidor'].toString().toUpperCase(), _formatarMedicao(row['leitura_anterior']), _formatarMedicao(row['valor_lido']), _formatarMedicao(row['consumo']), _formatarMoeda(row['valor_total_faturado']), row['status_leitura'] ?? 'Concluído']);
+      rows.add([
+        row['bloco'] ?? '-',
+        row['unidade'] ?? '-',
+        row['tipo'] ?? '-',
+        row['mes'] ?? '-',
+        row['data_leitura'] ?? '-',
+        _formatarMedicao(row['leitura_anterior']),
+        _formatarMedicao(row['leitura_atual']),
+        _formatarMedicao(row['consumo']),
+        _formatarMoeda(row['custo']),
+        _formatarMoeda(row['custo_adicional_total']),
+        row['houve_troca'] ?? 'Não',
+        row['validade_medidor'] ?? '',
+        row['observacao'] ?? '',
+        row['imagem'] ?? ''
+      ]);
     }
+
     String csv = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
     final bytes = [239, 187, 191] + utf8.encode(csv); 
     final blob = html.Blob([Uint8List.fromList(bytes)]);
@@ -183,7 +254,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
     html.Url.revokeObjectUrl(url);
   }
 
-  // Métodos XML e PDF mantidos para garantir a Regra de Ouro
   void _exportarXML() {
     if (_leituras.isEmpty) return;
     final nomeCond = widget.condominioSelecionado?['nome'] ?? 'Condominio';
@@ -211,7 +281,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       pw.Header(level: 0, child: pw.Text("Extrato de Leituras - $nomeCond")),
       pw.TableHelper.fromTextArray(data: <List<String>>[
         <String>['Bloco', 'Unid.', 'Tipo', 'Consumo'],
-        ..._leituras.map((item) => [item['bloco'] ?? '', item['unidade'] ?? '', item['tipo_medidor'] ?? '', _formatarMedicao(item['consumo'])])
+        ..._leituras.map((item) => [item['bloco'] ?? '', item['unidade'] ?? '', item['tipo'] ?? '', _formatarMedicao(item['consumo'])])
       ]),
     ]));
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => doc.save());
@@ -224,7 +294,7 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
       children: [
         Text('Integração e Exportação de Dados', style: GoogleFonts.montserrat(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue[900])),
         const SizedBox(height: 5),
-        const Text('Extraia as leituras do sistema para importar no seu software de gestão financeira.', style: TextStyle(color: Colors.grey)),
+        const Text('Extraia as leituras do sistema no padrão oficial das administradoras.', style: TextStyle(color: Colors.grey)),
         const SizedBox(height: 20),
 
         Card(
@@ -234,7 +304,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
             padding: const EdgeInsets.all(20.0),
             child: Row(
               children: [
-                // EXIBIÇÃO DO CONDOMÍNIO ATIVO (Somente Leitura)
                 Expanded(
                   flex: 2,
                   child: Container(
@@ -260,7 +329,6 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
                   ),
                 ),
                 const SizedBox(width: 15),
-                // SELETOR DE DATAS
                 Expanded(
                   flex: 2,
                   child: InkWell(
@@ -292,20 +360,18 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
            const Expanded(child: Center(child: CircularProgressIndicator()))
         else if (_leituras.isNotEmpty)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Escolha o formato de saída:", style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildExportCard(icon: Icons.table_chart, color: Colors.green, title: "Planilha Excel (CSV)", subtitle: "Para edição manual.", onTap: _exportarCSV),
-                    _buildExportCard(icon: Icons.code, color: Colors.orange, title: "Arquivo XML", subtitle: "Integração ERP.", onTap: _exportarXML),
-                    _buildExportCard(icon: Icons.picture_as_pdf, color: Colors.red, title: "Documento PDF", subtitle: "Impressão.", onTap: _imprimirPDF),
-                  ],
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 20,
+                runSpacing: 20,
+                alignment: WrapAlignment.center,
+                children: [
+                  _buildExportCard(icon: Icons.table_view, color: Colors.green[800]!, title: "Excel Puro (.xlsx)", subtitle: "Formato oficial Administradora.", onTap: _gerarExcelPuro),
+                  _buildExportCard(icon: Icons.table_chart, color: Colors.green, title: "Planilha CSV", subtitle: "Separado por ponto e vírgula.", onTap: _exportarCSV),
+                  _buildExportCard(icon: Icons.code, color: Colors.orange, title: "Arquivo XML", subtitle: "Integração direta ERP.", onTap: _exportarXML),
+                  _buildExportCard(icon: Icons.picture_as_pdf, color: Colors.red, title: "Documento PDF", subtitle: "Impressão e Conferência.", onTap: _imprimirPDF),
+                ],
+              ),
             ),
           )
       ],
@@ -319,14 +385,14 @@ class _ExportacaoScreenWebState extends State<ExportacaoScreenWeb> {
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Container(
-          width: 300,
+          width: 260,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               Icon(icon, size: 60, color: color),
               const SizedBox(height: 15),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12), textAlign: TextAlign.center),
               const SizedBox(height: 15),
               ElevatedButton(onPressed: onTap, style: ElevatedButton.styleFrom(backgroundColor: color), child: const Text("BAIXAR", style: TextStyle(color: Colors.white))),
             ],
