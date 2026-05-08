@@ -71,10 +71,12 @@ class ApiServiceWeb {
     }
   }
 
-  // --- CONDOMÍNIOS ---
+  // --- CONDOMÍNIOS (CORRIGIDO AQUI) ---
   Future<List<dynamic>> getCondominios({int? usuarioId, String? nivel}) async {
     String query = '$baseUrl/admin/condominios';
-    if (usuarioId != null) query += '?usuario_id=$userId&nivel=$nivel';
+    // Corrigido de $userId para $usuarioId para bater com o parâmetro da função
+    if (usuarioId != null) query += '?usuario_id=$usuarioId&nivel=$nivel';
+    
     final response = await http.get(Uri.parse(query));
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Erro ao carregar condomínios');
@@ -137,7 +139,7 @@ class ApiServiceWeb {
     }
   }
 
-  // --- EQUIPE, BLOCOS, UNIDADES E USUÁRIOS (MANTIDOS INTEGRALMENTE) ---
+  // --- EQUIPE, BLOCOS, UNIDADES E USUÁRIOS ---
   Future<List<dynamic>> buscarUsuarios(String termo) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/usuarios/buscar?termo=$termo'));
     if (response.statusCode == 200) return jsonDecode(response.body);
@@ -265,7 +267,7 @@ class ApiServiceWeb {
     return [];
   }
 
-  // --- AUDITORIA E IMPORTAÇÃO (MANTIDOS) ---
+  // --- AUDITORIA E IMPORTAÇÃO ---
   Future<Map<String, dynamic>> getResumoAlertas(int tenantId) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/dashboard/alertas?tenant_id=$tenantId'));
     if (response.statusCode == 200) return jsonDecode(response.body);
