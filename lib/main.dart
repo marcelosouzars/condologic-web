@@ -1,3 +1,6 @@
+//
+// main.dart (web condologic)
+//
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // PACOTE DE TRADUÇÃO
 import 'screens/login_screen_web.dart';
