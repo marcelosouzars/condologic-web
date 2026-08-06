@@ -58,7 +58,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   @override
   void initState() {
     super.initState();
-    // Monitora a digitação da senha para atualizar o checklist
     _senhaRegCtrl.addListener(() {
       final text = _senhaRegCtrl.text;
       setState(() {
@@ -143,7 +142,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
     setState(() => _isLoading = true);
 
     try {
-      // Ajuste de Data de Nascimento para o Banco de Dados (DD/MM/AAAA -> AAAA-MM-DD)
       String dNasc = _nascimentoRegCtrl.text.trim();
       if (dNasc.length == 10 && dNasc.contains('/')) {
         var p = dNasc.split('/');
@@ -261,57 +259,57 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Center(child: const Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue))),
-        const SizedBox(height: 20),
+        const Center(child: Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue))),
+        const SizedBox(height: 10),
         
         const Text("1. Dados Pessoais", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(child: TextField(controller: _nomeRegCtrl, decoration: const InputDecoration(labelText: "Nome Completo*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(child: TextField(controller: _cpfRegCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "CPF*", border: OutlineInputBorder(), isDense: true))),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(child: TextField(controller: _emailRegCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: "E-mail válido*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(child: TextField(controller: _telefoneRegCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "WhatsApp / Fixo*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(child: TextField(controller: _nascimentoRegCtrl, decoration: const InputDecoration(labelText: "Nascimento (DD/MM/AAAA)", border: OutlineInputBorder(), isDense: true))),
           ],
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 15),
         const Text("2. Endereço", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(flex: 1, child: TextField(controller: _cepRegCtrl, decoration: const InputDecoration(labelText: "CEP*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(flex: 2, child: TextField(controller: _logradouroRegCtrl, decoration: const InputDecoration(labelText: "Logradouro (Rua, Av)*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(flex: 1, child: TextField(controller: _numeroRegCtrl, decoration: const InputDecoration(labelText: "Número*", border: OutlineInputBorder(), isDense: true))),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(child: TextField(controller: _complementoRegCtrl, decoration: const InputDecoration(labelText: "Complemento", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(child: TextField(controller: _bairroRegCtrl, decoration: const InputDecoration(labelText: "Bairro*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(child: TextField(controller: _cidadeRegCtrl, decoration: const InputDecoration(labelText: "Cidade*", border: OutlineInputBorder(), isDense: true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             SizedBox(width: 80, child: TextField(controller: _estadoRegCtrl, decoration: const InputDecoration(labelText: "UF*", border: OutlineInputBorder(), isDense: true))),
           ],
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 15),
         const Text("3. Segurança", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -319,15 +317,15 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
               child: Column(
                 children: [
                   TextField(controller: _senhaRegCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Criar Senha*", border: OutlineInputBorder(), isDense: true)),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   TextField(controller: _confirmaSenhaRegCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Confirmar Senha*", border: OutlineInputBorder(), isDense: true)),
                 ],
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 15),
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blueGrey.withOpacity(0.3))),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,16 +343,15 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
           ],
         ),
         
-        const SizedBox(height: 25),
+        const SizedBox(height: 20),
         SizedBox(
-          width: double.infinity, height: 50,
+          width: double.infinity, height: 45,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _registrarSindico, 
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
             child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("FINALIZAR CADASTRO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
-        const SizedBox(height: 5),
         Center(
           child: TextButton(
             onPressed: () => setState(() => _mode = AuthMode.login),
@@ -416,13 +413,12 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 400),
                   curve: Curves.easeInOut,
-                  // Expande a largura para caber as colunas do formulário
                   width: _mode == AuthMode.register ? 750 : 450,
-                  // Trava a altura máxima para não vazar a tela e ativa a rolagem interna
                   constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.90,
+                    maxHeight: MediaQuery.of(context).size.height * 0.95,
                   ),
-                  padding: const EdgeInsets.all(32),
+                  // O Pulo do gato: Diminui o padding interno quando no modo de registro
+                  padding: EdgeInsets.all(_mode == AuthMode.register ? 20 : 32),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.40),
                     borderRadius: BorderRadius.circular(20),
@@ -432,11 +428,16 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Image.asset('assets/images/logo_condologic.png', height: 80, errorBuilder: (c, e, s) => Icon(Icons.apartment, size: 80, color: Colors.blue[900])),
-                        const SizedBox(height: 10),
-                        const Text("CONDOLOGIC", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                        const Text("PAINEL DO SÍNDICO", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        const SizedBox(height: 30),
+                        // Logo diminui de tamanho no modo registro para ganhar espaço
+                        Image.asset('assets/images/logo_condologic.png', height: _mode == AuthMode.register ? 45 : 80, errorBuilder: (c, e, s) => Icon(Icons.apartment, size: _mode == AuthMode.register ? 45 : 80, color: Colors.blue[900])),
+                        SizedBox(height: _mode == AuthMode.register ? 5 : 10),
+                        
+                        // Oculta o título gigante quando no modo registro, já que o logo já tem o nome
+                        if (_mode != AuthMode.register)
+                          const Text("CONDOLOGIC", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                          
+                        Text("PAINEL DO SÍNDICO", style: TextStyle(fontSize: _mode == AuthMode.register ? 10 : 12, color: Colors.grey)),
+                        SizedBox(height: _mode == AuthMode.register ? 15 : 30),
                         
                         if (_mode == AuthMode.login) _buildLoginForm(),
                         if (_mode == AuthMode.register) _buildRegisterForm(),
