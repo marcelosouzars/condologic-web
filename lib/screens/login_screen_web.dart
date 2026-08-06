@@ -283,7 +283,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
         children: [
           // 1. Imagem de Fundo (Verifique se o nome confere com o arquivo na pasta assets/images/)
           Positioned.fill(
-            child: Image.asset('assets/images/background_web.png', fit: BoxFit.cover)
+            child: Image.asset('assets/images/fundo_web.png', fit: BoxFit.cover)
           ),
           
           // 2. Película escura para dar contraste
