@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:ui'; // <--- NOVO: Necessário para o ImageFilter (Glassmorfismo)
+import 'dart:ui'; // Necessário para o ImageFilter (Glassmorfismo)
 import 'main_web_screen.dart';
 import '../services/api_service_web.dart';
 
@@ -281,7 +281,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Imagem de Fundo
+          // 1. Imagem de Fundo (Verifique se o nome confere com o arquivo na pasta assets/images/)
           Positioned.fill(
             child: Image.asset('assets/images/background_web.png', fit: BoxFit.cover)
           ),
@@ -294,21 +294,21 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
             )
           ),
           
-          // 3. EFEITO GLASSMORFISMO AQUI
+          // 3. EFEITO GLASSMORFISMO APRIMORADO
           Center(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20), // Arredondamento do vidro
+              borderRadius: BorderRadius.circular(20),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0), // Intensidade do desfoque
+                filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0), // Mais blur para suportar a transparência
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   width: 450,
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.80), // Fundo branco translúcido
+                    color: Colors.white.withOpacity(0.40), // Mais transparente (40%)
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.5), // Borda brilhante do vidro
+                      color: Colors.white.withOpacity(0.60), // Borda um pouco mais marcada
                       width: 1.5,
                     ),
                   ),
