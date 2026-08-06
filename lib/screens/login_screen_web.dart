@@ -259,8 +259,8 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Center(child: Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue))),
-        const SizedBox(height: 10),
+        const Center(child: Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue))),
+        const SizedBox(height: 15),
         
         const Text("1. Dados Pessoais", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
         const SizedBox(height: 8),
@@ -352,10 +352,12 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
             child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("FINALIZAR CADASTRO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
+        const SizedBox(height: 10),
         Center(
-          child: TextButton(
+          child: TextButton.icon(
             onPressed: () => setState(() => _mode = AuthMode.login),
-            child: const Text("Voltar para o Login", style: TextStyle(color: Colors.grey)),
+            icon: const Icon(Icons.arrow_back, color: Colors.black87, size: 18),
+            label: const Text("Voltar para o Login", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
           ),
         )
       ],
@@ -388,10 +390,11 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
             child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("VALIDAR CÓDIGO E ATIVAR CONTA", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           ),
         ),
-        const SizedBox(height: 10),
-        TextButton(
+        const SizedBox(height: 15),
+        TextButton.icon(
           onPressed: () => setState(() => _mode = AuthMode.register),
-          child: const Text("Corrigir E-mail / Voltar", style: TextStyle(color: Colors.grey)),
+          icon: const Icon(Icons.arrow_back, color: Colors.black87, size: 18),
+          label: const Text("Corrigir E-mail / Voltar", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
         )
       ],
     );
@@ -417,7 +420,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.95,
                   ),
-                  // O Pulo do gato: Diminui o padding interno quando no modo de registro
                   padding: EdgeInsets.all(_mode == AuthMode.register ? 20 : 32),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.40),
@@ -428,16 +430,14 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Logo diminui de tamanho no modo registro para ganhar espaço
-                        Image.asset('assets/images/logo_condologic.png', height: _mode == AuthMode.register ? 45 : 80, errorBuilder: (c, e, s) => Icon(Icons.apartment, size: _mode == AuthMode.register ? 45 : 80, color: Colors.blue[900])),
-                        SizedBox(height: _mode == AuthMode.register ? 5 : 10),
-                        
-                        // Oculta o título gigante quando no modo registro, já que o logo já tem o nome
-                        if (_mode != AuthMode.register)
+                        // Oculta completamente o logo e os textos de cabeçalho no modo de registro
+                        if (_mode != AuthMode.register) ...[
+                          Image.asset('assets/images/logo_condologic.png', height: 80, errorBuilder: (c, e, s) => Icon(Icons.apartment, size: 80, color: Colors.blue[900])),
+                          const SizedBox(height: 10),
                           const Text("CONDOLOGIC", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                          
-                        Text("PAINEL DO SÍNDICO", style: TextStyle(fontSize: _mode == AuthMode.register ? 10 : 12, color: Colors.grey)),
-                        SizedBox(height: _mode == AuthMode.register ? 15 : 30),
+                          const Text("PAINEL DO SÍNDICO", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(height: 30),
+                        ],
                         
                         if (_mode == AuthMode.login) _buildLoginForm(),
                         if (_mode == AuthMode.register) _buildRegisterForm(),
