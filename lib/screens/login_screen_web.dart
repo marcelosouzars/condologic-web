@@ -1,7 +1,8 @@
 // ==========================================>>> login_screen_web.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Necessário para as máscaras
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http; // NOVO: Para a busca do CEP
 import 'dart:convert';
 import 'dart:ui';
 import 'main_web_screen.dart';
@@ -10,7 +11,7 @@ import '../services/api_service_web.dart';
 enum AuthMode { login, register, validate }
 
 // ============================================================================
-// FORMATADOR DE DATA: Coloca as barras automaticamente (DD/MM/AAAA)
+// FORMATADORES (MÁSCARAS) DE INPUT
 // ============================================================================
 class DataInputFormatter extends TextInputFormatter {
   @override
@@ -21,12 +22,41 @@ class DataInputFormatter extends TextInputFormatter {
     for (int i = 0; i < text.length; i++) {
       buffer.write(text[i]);
       var nonZeroIndex = i + 1;
-      if (nonZeroIndex % 2 == 0 && nonZeroIndex != text.length && nonZeroIndex <= 4) {
-        buffer.write('/');
-      }
+      if (nonZeroIndex % 2 == 0 && nonZeroIndex != text.length && nonZeroIndex <= 4) buffer.write('/');
     }
     var string = buffer.toString();
     return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+  }
+}
+
+class TelefoneInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    String text = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (text.length > 11) text = text.substring(0, 11);
+    String formatted = '';
+    for (int i = 0; i < text.length; i++) {
+      if (i == 0) formatted += '(';
+      formatted += text[i];
+      if (i == 1) formatted += ') ';
+      if (text.length == 11 && i == 6) formatted += '-';
+      if (text.length < 11 && i == 5) formatted += '-';
+    }
+    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
+  }
+}
+
+class CepInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    String text = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (text.length > 8) text = text.substring(0, 8);
+    String formatted = '';
+    for (int i = 0; i < text.length; i++) {
+      formatted += text[i];
+      if (i == 4 && text.length > 5) formatted += '-';
+    }
+    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
   }
 }
 
@@ -42,6 +72,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   
   AuthMode _mode = AuthMode.login;
   bool _isLoading = false;
+  bool _isBuscandoCep = false;
   String _emailParaValidacao = '';
 
   // Controladores do Login
@@ -64,6 +95,10 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   final TextEditingController _cidadeRegCtrl = TextEditingController();
   final TextEditingController _estadoRegCtrl = TextEditingController();
 
+  // Foco para pular automaticamente após o CEP
+  final FocusNode _numeroFocus = FocusNode();
+  final FocusNode _logradouroFocus = FocusNode();
+
   // Controladores do Registro - Segurança
   final TextEditingController _senhaRegCtrl = TextEditingController();
   final TextEditingController _confirmaSenhaRegCtrl = TextEditingController();
@@ -74,6 +109,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   bool _hasNumber = false;
   bool _hasSpecial = false;
 
+  // Controlador da Validação de Email
   final TextEditingController _codigoCtrl = TextEditingController();
 
   @override
@@ -93,9 +129,52 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   @override
   void dispose() {
     _senhaRegCtrl.dispose();
+    _numeroFocus.dispose();
+    _logradouroFocus.dispose();
     super.dispose();
   }
 
+  // =========================================================================
+  // INTEGRAÇÃO VIACEP
+  // =========================================================================
+  Future<void> _buscarCep(String cep) async {
+    String cepLimpo = cep.replaceAll(RegExp(r'\D'), '');
+    if (cepLimpo.length != 8) return;
+    
+    setState(() => _isBuscandoCep = true);
+    
+    try {
+      final response = await http.get(Uri.parse('https://viacep.com.br/ws/$cepLimpo/json/'));
+      if (response.statusCode == 200) {
+        final dados = jsonDecode(response.body);
+        
+        if (dados['erro'] != true) {
+          setState(() {
+            _logradouroRegCtrl.text = dados['logradouro'] ?? '';
+            _bairroRegCtrl.text = dados['bairro'] ?? '';
+            _cidadeRegCtrl.text = dados['localidade'] ?? '';
+            _estadoRegCtrl.text = dados['uf'] ?? '';
+          });
+
+          // Se o CEP for geral (cidade pequena), logradouro vem vazio. Joga o foco pra lá.
+          if ((dados['logradouro'] ?? '').isEmpty) {
+            _logradouroFocus.requestFocus();
+          } else {
+            // Se achou a rua certinho, pula direto pro campo "Número"
+            _numeroFocus.requestFocus();
+          }
+        }
+      }
+    } catch (e) {
+      print("Erro ao buscar CEP: $e");
+    } finally {
+      if (mounted) setState(() => _isBuscandoCep = false);
+    }
+  }
+
+  // =========================================================================
+  // FUNÇÕES DE AUTENTICAÇÃO
+  // =========================================================================
   Future<void> _login() async {
     String cpfDigitado = _cpfLoginCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
     String senhaDigitada = _passLoginCtrl.text.trim();
@@ -109,6 +188,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
 
     try {
       final user = await _apiService.login(cpfDigitado, senhaDigitada);
+      
       String nivelAcesso = user['nivel_acesso']?.toString().toLowerCase() ?? user['nivel']?.toString().toLowerCase() ?? 'usuario';
       
       if (nivelAcesso != 'admin' && nivelAcesso != 'master') {
@@ -168,9 +248,9 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
         'nome': _nomeRegCtrl.text.trim(),
         'cpf': _cpfRegCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''),
         'email': _emailRegCtrl.text.trim(),
-        'telefone': _telefoneRegCtrl.text.trim(),
+        'telefone': _telefoneRegCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''), // Envia só os números pro banco
         'senha': _senhaRegCtrl.text.trim(),
-        'cep': _cepRegCtrl.text.trim(),
+        'cep': _cepRegCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''),
         'logradouro': _logradouroRegCtrl.text.trim(),
         'numero': _numeroRegCtrl.text.trim(),
         'complemento': _complementoRegCtrl.text.trim(),
@@ -275,8 +355,8 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Center(child: Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue))),
-        const SizedBox(height: 15),
+        const Center(child: Text("CRIAR CONTA DE SÍNDICO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue))),
+        const SizedBox(height: 10),
         
         const Text("1. Dados Pessoais", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
         const SizedBox(height: 8),
@@ -292,9 +372,15 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
           children: [
             Expanded(child: TextField(controller: _emailRegCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: "E-mail válido*", border: OutlineInputBorder(), isDense: true))),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _telefoneRegCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "WhatsApp / Fixo*", border: OutlineInputBorder(), isDense: true))),
+            Expanded(
+              child: TextField(
+                controller: _telefoneRegCtrl, 
+                keyboardType: TextInputType.phone, 
+                decoration: const InputDecoration(labelText: "WhatsApp / Fixo*", border: OutlineInputBorder(), isDense: true, hintText: "(00) 00000-0000"),
+                inputFormatters: [TelefoneInputFormatter()],
+              )
+            ),
             const SizedBox(width: 8),
-            // >>> AQUI ENTROU A MÁSCARA INTELIGENTE <<<
             Expanded(
               child: TextField(
                 controller: _nascimentoRegCtrl, 
@@ -311,11 +397,31 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(flex: 1, child: TextField(controller: _cepRegCtrl, decoration: const InputDecoration(labelText: "CEP*", border: OutlineInputBorder(), isDense: true))),
+            Expanded(
+              flex: 1, 
+              child: TextField(
+                controller: _cepRegCtrl, 
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: "CEP*", 
+                  border: const OutlineInputBorder(), 
+                  isDense: true,
+                  suffixIcon: _isBuscandoCep 
+                      ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))) 
+                      : null
+                ),
+                inputFormatters: [CepInputFormatter()],
+                onChanged: (val) {
+                  if (val.length == 9) { // 8 dígitos + 1 traço
+                    _buscarCep(val);
+                  }
+                },
+              )
+            ),
             const SizedBox(width: 8),
-            Expanded(flex: 2, child: TextField(controller: _logradouroRegCtrl, decoration: const InputDecoration(labelText: "Logradouro (Rua, Av)*", border: OutlineInputBorder(), isDense: true))),
+            Expanded(flex: 2, child: TextField(controller: _logradouroRegCtrl, focusNode: _logradouroFocus, decoration: const InputDecoration(labelText: "Logradouro (Rua, Av)*", border: OutlineInputBorder(), isDense: true))),
             const SizedBox(width: 8),
-            Expanded(flex: 1, child: TextField(controller: _numeroRegCtrl, decoration: const InputDecoration(labelText: "Número*", border: OutlineInputBorder(), isDense: true))),
+            Expanded(flex: 1, child: TextField(controller: _numeroRegCtrl, focusNode: _numeroFocus, decoration: const InputDecoration(labelText: "Número*", border: OutlineInputBorder(), isDense: true))),
           ],
         ),
         const SizedBox(height: 8),
@@ -376,7 +482,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
             child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("FINALIZAR CADASTRO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
-        const SizedBox(height: 10),
         Center(
           child: TextButton.icon(
             onPressed: () => setState(() => _mode = AuthMode.login),
