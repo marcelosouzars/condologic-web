@@ -1,5 +1,6 @@
 // ==========================================>>> login_screen_web.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Necessário para as máscaras
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:ui';
@@ -7,6 +8,27 @@ import 'main_web_screen.dart';
 import '../services/api_service_web.dart';
 
 enum AuthMode { login, register, validate }
+
+// ============================================================================
+// FORMATADOR DE DATA: Coloca as barras automaticamente (DD/MM/AAAA)
+// ============================================================================
+class DataInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    var text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (text.length > 8) text = text.substring(0, 8);
+    var buffer = StringBuffer();
+    for (int i = 0; i < text.length; i++) {
+      buffer.write(text[i]);
+      var nonZeroIndex = i + 1;
+      if (nonZeroIndex % 2 == 0 && nonZeroIndex != text.length && nonZeroIndex <= 4) {
+        buffer.write('/');
+      }
+    }
+    var string = buffer.toString();
+    return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+  }
+}
 
 class LoginScreenWeb extends StatefulWidget {
   const LoginScreenWeb({super.key});
@@ -52,7 +74,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
   bool _hasNumber = false;
   bool _hasSpecial = false;
 
-  // Controlador da Validação de Email
   final TextEditingController _codigoCtrl = TextEditingController();
 
   @override
@@ -88,7 +109,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
 
     try {
       final user = await _apiService.login(cpfDigitado, senhaDigitada);
-      
       String nivelAcesso = user['nivel_acesso']?.toString().toLowerCase() ?? user['nivel']?.toString().toLowerCase() ?? 'usuario';
       
       if (nivelAcesso != 'admin' && nivelAcesso != 'master') {
@@ -100,11 +120,7 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
               title: const Row(children: [Icon(Icons.block, color: Colors.red), SizedBox(width: 10), Text("Acesso Negado")]),
               content: const Text("Seu perfil de usuário não tem permissão para acessar o Painel Web.\n\nPor favor, utilize o Aplicativo Mobile para tarefas de leitura."),
               actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
-                  child: const Text("ENTENDI", style: TextStyle(color: Colors.white)),
-                )
+                ElevatedButton(onPressed: () => Navigator.pop(ctx), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]), child: const Text("ENTENDI", style: TextStyle(color: Colors.white)))
               ],
             )
           );
@@ -278,7 +294,15 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
             const SizedBox(width: 8),
             Expanded(child: TextField(controller: _telefoneRegCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "WhatsApp / Fixo*", border: OutlineInputBorder(), isDense: true))),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _nascimentoRegCtrl, decoration: const InputDecoration(labelText: "Nascimento (DD/MM/AAAA)", border: OutlineInputBorder(), isDense: true))),
+            // >>> AQUI ENTROU A MÁSCARA INTELIGENTE <<<
+            Expanded(
+              child: TextField(
+                controller: _nascimentoRegCtrl, 
+                decoration: const InputDecoration(labelText: "Nascimento (DD/MM/AAAA)", border: OutlineInputBorder(), isDense: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [DataInputFormatter()],
+              )
+            ),
           ],
         ),
 
@@ -430,7 +454,6 @@ class _LoginScreenWebState extends State<LoginScreenWeb> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Oculta completamente o logo e os textos de cabeçalho no modo de registro
                         if (_mode != AuthMode.register) ...[
                           Image.asset('assets/images/logo_condologic.png', height: 80, errorBuilder: (c, e, s) => Icon(Icons.apartment, size: 80, color: Colors.blue[900])),
                           const SizedBox(height: 10),
