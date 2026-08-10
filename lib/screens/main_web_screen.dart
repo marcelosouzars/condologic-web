@@ -56,8 +56,8 @@ class _MainWebScreenState extends State<MainWebScreen> {
          DateTime fimTrial = DateTime.parse(_usuarioLogado!['data_fim_trial']);
          DateTime hoje = DateTime.now();
          
-         // Se o status não for ATIVO (ou seja, se ele ainda não pagou a renovação) e a data estourou:
-         if (hoje.isAfter(fimTrial) && _usuarioLogado!['status_conta'] != 'ATIVO') {
+         // CORREÇÃO: Removemos a checagem de "status". A regra agora é simples: Data Venceu? Bloqueia!
+         if (hoje.isAfter(fimTrial)) {
              if (mounted) {
                // Mata o painel e joga o cara pra pagar!
                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CheckoutScreenWeb(usuarioLogado: _usuarioLogado!)));
