@@ -71,10 +71,32 @@ class ApiServiceWeb {
     }
   }
 
-  // --- CONDOMÍNIOS (CORRIGIDO AQUI) ---
+  // ==========================================
+  // >>> NOVAS ROTAS: AUTO-CADASTRO SÍNDICO <<<
+  // ==========================================
+  Future<Map<String, dynamic>> registrarSindico(Map<String, dynamic> dados) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/registro-sindico'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(dados),
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception(jsonDecode(response.body)['error'] ?? 'Erro no cadastro do síndico.');
+  }
+
+  Future<Map<String, dynamic>> validarCodigoVerificacao(String email, String codigo) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/validar-codigo'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'codigo': codigo}),
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(jsonDecode(response.body)['error'] ?? 'Código de verificação inválido.');
+  }
+
+  // --- CONDOMÍNIOS ---
   Future<List<dynamic>> getCondominios({int? usuarioId, String? nivel}) async {
     String query = '$baseUrl/admin/condominios';
-    // Corrigido de $userId para $usuarioId para bater com o parâmetro da função
     if (usuarioId != null) query += '?usuario_id=$usuarioId&nivel=$nivel';
     
     final response = await http.get(Uri.parse(query));
@@ -82,7 +104,6 @@ class ApiServiceWeb {
     throw Exception('Erro ao carregar condomínios');
   }
 
-  // --- NOVO MÉTODO: BUSCA DADOS PARA A PLANILHA DA ADMINISTRADORA ---
   Future<List<dynamic>> getLeiturasParaAdministradora(int tenantId, String dtInicio, String dtFim) async {
     try {
       final response = await http.get(
@@ -100,7 +121,6 @@ class ApiServiceWeb {
     }
   }
 
-  // --- ANTIGA ROTA DE EXPORTAÇÃO (MANTIDA PARA COMPATIBILIDADE) ---
   Future<List<dynamic>> getLeiturasParaExportacao(int tenantId, String mesReferencia) async {
     try {
       final response = await http.get(
