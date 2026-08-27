@@ -13,6 +13,7 @@ import 'relatorios_screen_web.dart';
 import 'exportacao_screen_web.dart';
 import 'importacao_screen_web.dart'; 
 import 'login_screen_web.dart';
+import 'checkout_screen_web.dart'; 
 import '../services/api_service_web.dart';
 
 class MainWebScreen extends StatefulWidget {
@@ -40,7 +41,7 @@ class _MainWebScreenState extends State<MainWebScreen> {
   }
 
   // =============================================================
-  // MÁGICA DO F5 E ISOLAMENTO RAIZ DO SÍNDICO
+  // MÁGICA DO F5 E BARREIRA DOS 30 DIAS GRÁTIS
   // =============================================================
   Future<void> _carregarUsuarioECondominios() async {
     final api = ApiServiceWeb();
@@ -48,6 +49,24 @@ class _MainWebScreenState extends State<MainWebScreen> {
     
     if (userSessao != null) {
       _usuarioLogado = userSessao;
+
+      // >>> BARREIRA DE PAGAMENTO (TRIAL DE 30 DIAS) <<<
+      // Verifica se a data de vencimento do trial existe e se já passou
+      if (_usuarioLogado!['data_fim_trial'] != null) {
+         DateTime fimTrial = DateTime.parse(_usuarioLogado!['data_fim_trial']);
+         DateTime hoje = DateTime.now();
+         
+         // >>> CORREÇÃO CRUCIAL AQUI: Removida a checagem de status! <<<
+         // A regra agora é simples: se a data de hoje passou da data do trial, bloqueia.
+         if (hoje.isAfter(fimTrial)) {
+             if (mounted) {
+               // Mata o painel e joga o cara pra pagar!
+               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CheckoutScreenWeb(usuarioLogado: _usuarioLogado!)));
+             }
+             return; // Interrompe o carregamento do painel
+         }
+      }
+      // ========================================================
       
       int? userId = _usuarioLogado?['id'];
       String? nivel = _usuarioLogado?['nivel_acesso'] ?? _usuarioLogado?['nivel'];
@@ -292,7 +311,6 @@ class _MainWebScreenState extends State<MainWebScreen> {
         filtroInicialAuditoria: _ativarFiltroAuditoria,
       ),
       RelatoriosScreenWeb(key: ValueKey('rel_$tenantIdAtual')),
-      // CORREÇÃO AQUI: Passando o condomínio ativo para a tela de exportação
       ExportacaoScreenWeb(
         key: ValueKey('exp_$tenantIdAtual'),
         usuarioLogado: _usuarioLogado,
