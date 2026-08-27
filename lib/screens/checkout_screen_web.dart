@@ -130,15 +130,15 @@ class _CheckoutScreenWebState extends State<CheckoutScreenWeb> {
                      Row(
                        children: [
                          Expanded(
-                           child: _buildPlanoCard("Start", "Até 20 und.", 29.90, "CREDIT_CARD", Icons.credit_card, "Cartão"),
+                           child: _buildPlanoCard("Start", "Até 20 und.", 5.00, "CREDIT_CARD", Icons.credit_card, "Cartão"),
                          ),
                          const SizedBox(width: 15),
                          Expanded(
-                           child: _buildPlanoCard("Start", "Até 20 und.", 29.90, "PIX", Icons.qr_code, "PIX"),
+                           child: _buildPlanoCard("Start", "Até 20 und.", 10.00, "PIX", Icons.qr_code, "PIX"),
                          ),
                          const SizedBox(width: 15),
                          Expanded(
-                           child: _buildPlanoCard("Start", "Até 20 und.", 29.90, "BOLETO", Icons.receipt, "Boleto"),
+                           child: _buildPlanoCard("Start", "Até 20 und.", 15.00, "BOLETO", Icons.receipt, "Boleto"),
                          )
                        ],
                      ),
